@@ -1,6 +1,6 @@
 {
 	"name": "@victor-software-house/anti-slop",
-	"version": "0.0.0",
+	"version": "0.0.1",
 	"description": "Oxlint rules that reject low-evidence TypeScript patterns.",
 	"license": "MIT",
 	"author": {
