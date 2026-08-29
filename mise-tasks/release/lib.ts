@@ -1,18 +1,7 @@
 import { $ } from 'bun';
 import { match, P } from 'ts-pattern';
 
-export type PackageMeta = {
-	name: string;
-	version: string;
-};
-
-export async function readPackageMeta(): Promise<PackageMeta> {
-	return match(await Bun.file('package.json').json())
-		.with({ name: P.string, version: P.string }, ({ name, version }) => ({ name, version }))
-		.otherwise(() => {
-			throw new Error('package.json is missing name or version');
-		});
-}
+export { name, version } from '@repo/package.json' with { type: 'json' };
 
 export async function thisCommitBumpedVersion(version: string): Promise<boolean> {
 	const shown = await $`git show ${'HEAD^:package.json'}`.nothrow().quiet();

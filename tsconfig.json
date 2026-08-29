@@ -29,9 +29,10 @@
 		"paths": {
 			"@anti-slop": ["./src/index.ts"],
 			"@anti-slop/*": ["./src/*"],
-			"@mise-tasks/*": ["./mise-tasks/*"]
+			"@mise-tasks/*": ["./mise-tasks/*"],
+			"@repo/package.json": ["./package.json"]
 		}
 	},
-	"include": ["src", "test", "mise-tasks", ".changeset", "*.config.ts"],
+	"include": ["src", "test", "mise-tasks", ".changeset", "*.config.ts", "package.json"],
 	"exclude": ["node_modules", "dist"]
 }

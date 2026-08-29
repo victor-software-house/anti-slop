@@ -7,15 +7,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env, exit, stdout } from 'node:process';
 import {
-	readPackageMeta,
+	name,
 	registryHasVersion,
 	thisCommitBumpedVersion,
+	version,
 } from '@mise-tasks/release/lib';
 import { $ } from 'bun';
 
 const NPM_PUBLISH = '11.19.0';
-
-const { name, version } = await readPackageMeta();
 const specifier = `${name}@${version}`;
 
 if (!(await thisCommitBumpedVersion(version))) {

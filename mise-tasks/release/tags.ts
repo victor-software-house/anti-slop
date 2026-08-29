@@ -9,12 +9,11 @@ import { env, exit, stdout } from 'node:process';
 import {
 	changelogSection,
 	peeledTagSha,
-	readPackageMeta,
 	thisCommitBumpedVersion,
+	version,
 } from '@mise-tasks/release/lib';
 import { $ } from 'bun';
 
-const { version } = await readPackageMeta();
 const tag = `v${version}`;
 
 if (!(await thisCommitBumpedVersion(version))) {

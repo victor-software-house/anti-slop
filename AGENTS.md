@@ -28,8 +28,8 @@ this file.
 | [`test/`](./test/) | Node `RuleTester` against `dist` |
 
 Source imports use `@anti-slop/*`. `mise-tasks` imports use `@mise-tasks/*`.
-Relative imports are forbidden. Public package exports are `.` and `./effect` →
-`dist`.
+The root manifest is `@repo/package.json`. Relative imports are forbidden.
+Public package exports are `.` and `./effect` → `dist`.
 
 ## Invariants
 
