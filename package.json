@@ -1,7 +1,7 @@
 {
 	"name": "@victor-software-house/anti-slop",
 	"version": "0.0.0",
-	"description": "Published fork of dmmulroy/anti-slop: Oxlint rules that reject low-evidence TypeScript patterns.",
+	"description": "Oxlint rules that reject low-evidence TypeScript patterns.",
 	"license": "MIT",
 	"author": {
 		"name": "Victor Araújo",

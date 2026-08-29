@@ -1,13 +1,10 @@
 # @victor-software-house/anti-slop
 
-Public npm fork of [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop) at
-`6d538555cb151d4121ed51a27db81890eacf8ae9`.
+Oxlint JS-plugin rules that reject low-evidence TypeScript: broad `unknown` /
+`object` contracts, discarded inference, module mocks, and assertion chains
+that invent precision.
 
-Rules use Oxlint's [alternative `createOnce` API](https://oxc.rs/docs/guide/usage/linter/writing-js-plugins.md)
-wrapped with `eslintCompatPlugin`. `@oxlint/plugins` is a runtime dependency, as
-the oxlint docs require for a published plugin.
-
-Do not vendor this into a consumer. Depend on the package.
+Install the package. Do not copy `src/` into a consumer.
 
 ## Install
 
@@ -15,11 +12,10 @@ Do not vendor this into a consumer. Depend on the package.
 bun add -D @victor-software-house/anti-slop oxlint @oxlint/plugins
 ```
 
-Pin `@oxlint/plugins` to the same oxlint major as the consumer.
+Pin `oxlint` and `@oxlint/plugins` to the same major. JSON and TypeScript
+oxlint configs cannot coexist; prefer `oxlint.config.ts`.
 
 ## Usage
-
-JSON and TypeScript oxlint configs cannot coexist. Prefer `oxlint.config.ts`:
 
 ```ts
 import { defineConfig } from 'oxlint';
@@ -51,7 +47,12 @@ export default defineConfig({
 });
 ```
 
-Effect-specific rules are a separate entry. Register them only in Effect repos:
+JS plugins have no type-checker APIs. These rules are syntactic.
+
+### Effect
+
+Register the Effect entry only in Effect repos. Its `meta.name` is
+`anti-slop-effect`:
 
 ```ts
 jsPlugins: [
@@ -64,9 +65,50 @@ jsPlugins: [
 		specifier: '@victor-software-house/anti-slop/effect',
 	},
 ],
+rules: {
+	'anti-slop-effect/no-service-constructor-imports': 'error',
+},
 ```
 
-The Effect plugin's `meta.name` is `anti-slop-effect`, so those rules are
-`anti-slop-effect/no-service-constructor-imports`.
+## Rules
 
-JS plugins cannot use TypeScript type-aware APIs. These rules are syntactic.
+| Rule | Rejects |
+| --- | --- |
+| `no-chained-type-assertions` | Nested `as` / angle-bracket assertions |
+| `no-conditional-empty-object-spread` | `...(cond ? { field } : {})` omission |
+| `no-known-value-widening` | Known values annotated as `unknown`, `object`, open dictionaries, or anonymous objects |
+| `no-module-mocking` | `vi.mock` / `jest.mock` |
+| `no-object-parameters` | `object` on function inputs |
+| `no-reflect-apply` | `Reflect.apply` |
+| `no-reflect-get` | `Reflect.get` |
+| `no-runtime-typeof` | Ad hoc `typeof` instead of boundary parsing |
+| `no-shape-in-symbol-names` | `shape` in symbol names |
+| `no-unknown-parameters` | `unknown` parameters except `cause` |
+| `no-unknown-returns` | `unknown` / `Promise<unknown>` return contracts |
+| `no-unknown-type-aliases` | Aliases that hide `unknown` |
+| `no-unsafe-dictionary-type` | Dictionary values of `unknown`, `any`, `object`, `{}`, or unions of those |
+| `no-widen-then-assert` | Widen a known value, then assert it back |
+| `require-safety-comment-for-type-assertion` | Non-`const` assertions without a nearby `SAFETY:` comment |
+
+`no-runtime-typeof` accepts `{ allowInTypeGuards: true }` so `typeof` may appear
+inside type predicates. Default is `false`. This repository enables it.
+
+### Effect
+
+| Rule | Rejects |
+| --- | --- |
+| `no-service-constructor-imports` | Project-local `make<Capability>` imports outside `*.test.*` / `*.spec.*` |
+
+Import the owning Layer and yield the service. Package imports and static
+constructors such as `WorkspaceName.make` are out of scope.
+
+## Attribution
+
+Rule ideas originated in [dmmulroy/anti-slop][upstream]. This package is owned,
+published, and maintained by Victor Software House.
+
+## License
+
+MIT. Copyright Dillon Mulroy, then Victor Araújo — see [LICENSE](./LICENSE).
+
+[upstream]: https://github.com/dmmulroy/anti-slop
