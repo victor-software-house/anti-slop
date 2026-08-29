@@ -73,9 +73,11 @@ Release is changelog notes plus the `v*` tag.
 1. Author a `.changeset/*.md` file. Default bump is `patch`.
 2. Commit and push to `main` (or merge a PR).
 3. `changesets/action` opens a **"Version Packages" PR** (`mise run version` →
-   `changeset version` + `bun update --lockfile-only`).
-4. Operator merges that PR → CI runs `mise run release`, then
-   `mise run release:tags`.
+   `changeset version` + `bun update --lockfile-only`). The PR title is the
+   commit title (`chore(release): version packages`).
+4. Operator **squash-merges** that PR (the only merge method on this repo;
+   GitHub uses the PR title as the squash commit subject) → CI runs
+   `mise run release`, then `mise run release:tags`.
 
 `0.0.0` was a one-time bootstrap: operator `bun publish --access public`, tag
 `v0.0.0`, then `npm trust` for
