@@ -28,7 +28,8 @@
 		"forceConsistentCasingInFileNames": true,
 		"paths": {
 			"@anti-slop": ["./src/index.ts"],
-			"@anti-slop/*": ["./src/*"]
+			"@anti-slop/*": ["./src/*"],
+			"@mise-tasks/*": ["./mise-tasks/*"]
 		}
 	},
 	"include": ["src", "test", "mise-tasks", ".changeset", "*.config.ts"],

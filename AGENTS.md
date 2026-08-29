@@ -27,8 +27,9 @@ this file.
 | [`src/shared/lexical-type-parameters.ts`](./src/shared/lexical-type-parameters.ts) | In-scope type parameter names |
 | [`test/`](./test/) | Node `RuleTester` against `dist` |
 
-Source imports use `@anti-slop/*`. Relative imports are forbidden. Public
-package exports are `.` and `./effect` → `dist`.
+Source imports use `@anti-slop/*`. `mise-tasks` imports use `@mise-tasks/*`.
+Relative imports are forbidden. Public package exports are `.` and `./effect` →
+`dist`.
 
 ## Invariants
 
@@ -64,30 +65,35 @@ mise run verify
 
 ## Release discipline
 
-Versioning is changeset-driven after a one-time `0.0.0` bootstrap.
+Versioning is **changeset-driven — CI owns the bump, publish, tag, and GitHub
+Release.** Registry is public npm with OIDC trusted publishing. Runners are
+GitHub-hosted `ubuntu-24.04`. This package has no native binaries; a GitHub
+Release is changelog notes plus the `v*` tag.
 
-1. First published version is **`0.0.0`**, shipped by the initial commit with
-   **no** changeset file. Operator publishes it once
-   (`bun publish --access public`), tags `v0.0.0`, and configures npm trusted
-   publishing for [`.github/workflows/release.yml`](./.github/workflows/release.yml).
-   `npm trust` needs the package to exist; that is the only npm CLI step.
-2. Later functional PRs add a `.changeset/*.md` file. Default bump is `patch`.
-3. `changesets/action` opens a "Version Packages" PR. Operator merges it → CI
-   publishes with `bun publish` under OIDC.
+1. Author a `.changeset/*.md` file. Default bump is `patch`.
+2. Commit and push to `main` (or merge a PR).
+3. `changesets/action` opens a **"Version Packages" PR** (`mise run version` →
+   `changeset version` + `bun update --lockfile-only`).
+4. Operator merges that PR → CI runs `mise run release`, then
+   `mise run release:tags`.
 
-- Never run `changeset version` or `changeset publish`. Changesets versions;
-  bun publishes. `changeset publish` shells out to npm.
-- Never invoke `npm` for install, pack, or publish. Pack is `bun pm pack`.
-  Publish is `bun publish`.
+`0.0.0` was a one-time bootstrap: operator `bun publish --access public`, tag
+`v0.0.0`, then `npm trust` for
+[`.github/workflows/release.yml`](./.github/workflows/release.yml). Later
+versions are `0.0.1` onward from patch changesets.
+
+- **Never run `changeset version` or `changeset publish` locally.** Never
+  hand-edit `package.json` version or `CHANGELOG.md` after the `0.0.0` scaffold.
+- **CI publish uses `bunx npm@11.19.0 publish --access public --provenance`.**
+  Bun cannot do npm OIDC (oven-sh/bun#22423). Local emergency publish stays
+  `bun publish --access public`. Pack is `bun pm pack`.
+- Do not add `NPM_TOKEN` / `NODE_AUTH_TOKEN`. Do not pass `publish:` to
+  `changesets/action` — that forfeits explicit tags and GitHub Releases.
 - Bun is the package manager (`packageManager` + `devEngines.packageManager`).
   Node is the plugin runtime (`engines.node` + `devEngines.runtime`).
 - [`bunfig.toml`](./bunfig.toml) pins `@victor-software-house` to
   `registry.npmjs.org`. Bun has no per-package registry key.
-- Never hand-edit versions in `package.json` or `CHANGELOG.md` after the
-  `0.0.0` scaffold.
 - Never `major` on `0.x` unless explicitly decided.
-- No `NPM_TOKEN` in workflows.
-- Runners are GitHub-hosted `ubuntu-24.04`.
 
 ## Attribution
 
