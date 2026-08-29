@@ -109,6 +109,7 @@ published, and maintained by Victor Software House.
 
 ## License
 
-MIT. Copyright Dillon Mulroy, then Victor Araújo — see [LICENSE](./LICENSE).
+MIT. Dillon Mulroy's copyright notice is retained. Victor Araújo's is listed
+under it. See [LICENSE](./LICENSE).
 
 [upstream]: https://github.com/dmmulroy/anti-slop

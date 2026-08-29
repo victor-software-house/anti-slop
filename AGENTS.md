@@ -84,8 +84,9 @@ Versioning is changeset-driven after a one-time `0.0.0` bootstrap.
 ## Attribution
 
 Rule ideas originated in [dmmulroy/anti-slop][upstream]. This repository is
-owned and published by Victor Software House. License: MIT — copyright Dillon
-Mulroy, then Victor Araújo, in [`LICENSE`](./LICENSE).
+owned and published by Victor Software House. MIT in [`LICENSE`](./LICENSE):
+Dillon Mulroy's copyright notice is retained; Victor Araújo's is listed under
+it.
 
 [repo]: https://github.com/victor-software-house/anti-slop
 [upstream]: https://github.com/dmmulroy/anti-slop
