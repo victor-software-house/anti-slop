@@ -1,9 +1,6 @@
-import type { WideningTarget } from '@anti-slop/shared/dictionary-types';
-import {
-	isKnownEvidenceExpression,
-	TypeEnvironment,
-	unwrapEvidenceWrappers,
-} from '@anti-slop/shared/dictionary-types';
+import type { WideningTarget } from '@anti-slop/shared/environment';
+import { TypeEnvironment } from '@anti-slop/shared/environment';
+import { isKnownEvidenceExpression, unwrapEvidenceWrappers } from '@anti-slop/shared/evidence';
 import { resolveVariable } from '@anti-slop/shared/resolve-variable';
 import type { ESTree, SourceCode, Variable } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';

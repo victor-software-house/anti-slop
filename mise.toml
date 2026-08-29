@@ -41,10 +41,12 @@ run = "biome check ."
 
 [tasks."lint:oxlint"]
 hide = true
+depends = ["build"]
 run = "bun --bun oxlint"
 
 [tasks."lint:fix"]
 description = "Autofix lint: biome --write then oxlint --fix"
+depends = ["build"]
 run = ["biome check --write .", "bun --bun oxlint --fix"]
 
 [tasks.format]

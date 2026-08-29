@@ -1,25 +1,15 @@
+import {
+	isEffectivelyEmptyInterface,
+	isEffectivelyEmptyTypeLiteral,
+	isUnappliedReferenceTo,
+	onlyTypeArgument,
+	TRANSPARENT_WRAPPERS,
+	typeArgumentList,
+	typeReferenceName,
+	unwrapTransparentType,
+} from '@anti-slop/shared/transparent-type';
 import type { ESTree } from '@oxlint/plugins';
 import { match, P } from 'ts-pattern';
-
-const BUILT_INS = new Set([
-	'Record',
-	'Readonly',
-	'Partial',
-	'Required',
-	'Pick',
-	'Omit',
-	'PropertyKey',
-	'NonNullable',
-]);
-const TRANSPARENT_WRAPPERS = new Set(['Readonly', 'Partial', 'Required', 'NonNullable']);
-
-type TypeAliasEnvironment = ReadonlyMap<string, ESTree.TSType>;
-type WideningOrigin = 'alias' | 'surface';
-
-type ResolvedType = {
-	readonly type: ESTree.TSType;
-	readonly substitutions: TypeAliasEnvironment;
-};
 
 export type UnsafeValue = 'any' | 'empty-object' | 'object' | 'union' | 'unknown';
 
@@ -39,192 +29,24 @@ export type WideningTarget = {
 	readonly kind: WideningTargetKind;
 };
 
+type Environment = {
+	readonly aliases: ReadonlyMap<string, ESTree.TSTypeAliasDeclaration>;
+	readonly interfaces: ReadonlyMap<string, readonly ESTree.TSInterfaceDeclaration[]>;
+	isBuiltIn(name: string): boolean;
+};
+
+type TypeAliasEnvironment = ReadonlyMap<string, ESTree.TSType>;
+type WideningOrigin = 'alias' | 'surface';
+
+type ResolvedType = {
+	readonly type: ESTree.TSType;
+	readonly substitutions: TypeAliasEnvironment;
+};
+
 type AliasFrame = {
 	readonly alias: ESTree.TSTypeAliasDeclaration;
 	readonly query: TypeQuery;
 };
-
-export class TypeEnvironment {
-	readonly aliases: ReadonlyMap<string, ESTree.TSTypeAliasDeclaration>;
-	readonly interfaces: ReadonlyMap<string, readonly ESTree.TSInterfaceDeclaration[]>;
-	readonly shadowedBuiltIns: ReadonlySet<string>;
-
-	private constructor(
-		aliases: ReadonlyMap<string, ESTree.TSTypeAliasDeclaration>,
-		interfaces: ReadonlyMap<string, readonly ESTree.TSInterfaceDeclaration[]>,
-		shadowedBuiltIns: ReadonlySet<string>,
-	) {
-		this.aliases = aliases;
-		this.interfaces = interfaces;
-		this.shadowedBuiltIns = shadowedBuiltIns;
-	}
-
-	static empty(): TypeEnvironment {
-		return new TypeEnvironment(new Map(), new Map(), new Set());
-	}
-
-	static fromProgram(program: ESTree.Program): TypeEnvironment {
-		const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
-		const interfaces = new Map<string, ESTree.TSInterfaceDeclaration[]>();
-		const shadowedBuiltIns = new Set<string>();
-
-		for (const statement of program.body) {
-			recordProgramDeclaration(declaredStatement(statement), aliases, interfaces, shadowedBuiltIns);
-		}
-
-		return new TypeEnvironment(aliases, interfaces, shadowedBuiltIns);
-	}
-
-	isBuiltIn(name: string): boolean {
-		return BUILT_INS.has(name) && !this.shadowedBuiltIns.has(name);
-	}
-
-	classifyUnsafeDictionary(type: ESTree.TSType): UnsafeDictionary | null {
-		return this.query().classifyUnsafe(type);
-	}
-
-	classifyUnsafeDictionaryValue(type: ESTree.TSType): UnsafeDictionary | null {
-		return this.query().classifyUnsafeValue(type);
-	}
-
-	classifyWideningTarget(type: ESTree.TSType): WideningTarget | null {
-		return this.query().classifyWidening(type, 'surface');
-	}
-
-	private query(): TypeQuery {
-		return new TypeQuery(this, new Map(), new Set());
-	}
-}
-
-function declaredStatement(statement: ESTree.Statement): ESTree.Node | null {
-	return match(statement)
-		.with(
-			{ type: P.union('ExportNamedDeclaration', 'ExportDefaultDeclaration') },
-			({ declaration }) => declaration ?? null,
-		)
-		.otherwise((value) => value);
-}
-
-function shadowIfBuiltIn(name: string, shadowedBuiltIns: Set<string>): void {
-	if (BUILT_INS.has(name)) shadowedBuiltIns.add(name);
-}
-
-function recordProgramDeclaration(
-	declaration: ESTree.Node | null,
-	aliases: Map<string, ESTree.TSTypeAliasDeclaration>,
-	interfaces: Map<string, ESTree.TSInterfaceDeclaration[]>,
-	shadowedBuiltIns: Set<string>,
-): void {
-	match(declaration)
-		.with(P.nullish, () => undefined)
-		.with({ type: 'ImportDeclaration' }, ({ specifiers }) => {
-			for (const specifier of specifiers) {
-				shadowIfBuiltIn(specifier.local.name, shadowedBuiltIns);
-			}
-		})
-		.with({ type: 'TSTypeAliasDeclaration' }, (alias) => {
-			match(aliases.get(alias.id.name))
-				.with(P.nullish, () => {
-					aliases.set(alias.id.name, alias);
-				})
-				.otherwise(() => {
-					shadowedBuiltIns.add(alias.id.name);
-				});
-			shadowIfBuiltIn(alias.id.name, shadowedBuiltIns);
-		})
-		.with({ type: 'TSInterfaceDeclaration' }, (iface) => {
-			const declarations = interfaces.get(iface.id.name) ?? [];
-			declarations.push(iface);
-			interfaces.set(iface.id.name, declarations);
-			shadowIfBuiltIn(iface.id.name, shadowedBuiltIns);
-		})
-		.with({ type: 'TSEnumDeclaration' }, (enumDecl) => {
-			shadowIfBuiltIn(enumDecl.id.name, shadowedBuiltIns);
-		})
-		.with(
-			{ type: P.union('ClassDeclaration', 'FunctionDeclaration'), id: P.nonNullable },
-			({ id }) => {
-				shadowIfBuiltIn(id.name, shadowedBuiltIns);
-			},
-		)
-		.otherwise(() => undefined);
-}
-
-function typeReferenceName(type: ESTree.TSTypeReference): string | null {
-	return match(type.typeName)
-		.with({ type: 'Identifier' }, ({ name }) => name)
-		.otherwise(() => null);
-}
-
-function isUnappliedReferenceTo(type: ESTree.TSType, name: string): boolean {
-	return match(unwrapTransparentType(type))
-		.with(
-			{
-				type: 'TSTypeReference',
-				typeName: { type: 'Identifier', name },
-				typeArguments: P.union(P.nullish, { params: [] }),
-			},
-			() => true,
-		)
-		.otherwise(() => false);
-}
-
-function typeArgumentList(reference: ESTree.TSTypeReference): readonly ESTree.TSType[] {
-	return reference.typeArguments?.params ?? [];
-}
-
-function onlyTypeArgument(reference: ESTree.TSTypeReference): ESTree.TSType | null {
-	return match(typeArgumentList(reference))
-		.with([P.select()], (type) => type)
-		.otherwise(() => null);
-}
-
-function unwrapTransparentType(type: ESTree.TSType): ESTree.TSType {
-	return match(type)
-		.with({ type: 'TSParenthesizedType' }, ({ typeAnnotation }) =>
-			unwrapTransparentType(typeAnnotation),
-		)
-		.with({ type: 'TSTypeOperator', operator: 'readonly' }, ({ typeAnnotation }) =>
-			unwrapTransparentType(typeAnnotation),
-		)
-		.otherwise((current) => current);
-}
-
-function isNeverType(type: ESTree.TSType): boolean {
-	return match(unwrapTransparentType(type))
-		.with({ type: 'TSNeverKeyword' }, () => true)
-		.otherwise(() => false);
-}
-
-function isEffectivelyEmptyMember(member: ESTree.TSSignature): boolean {
-	return match(member)
-		.with(
-			{
-				type: 'TSPropertySignature',
-				optional: true,
-				typeAnnotation: P.nonNullable,
-			},
-			({ typeAnnotation }) => isNeverType(typeAnnotation.typeAnnotation),
-		)
-		.otherwise(() => false);
-}
-
-function isEffectivelyEmptyTypeLiteral(type: ESTree.TSTypeLiteral): boolean {
-	return type.members.length === 0 || type.members.every(isEffectivelyEmptyMember);
-}
-
-function isEffectivelyEmptyInterface(
-	declarations: readonly ESTree.TSInterfaceDeclaration[],
-): boolean {
-	return match(declarations)
-		.with(
-			[P.select()],
-			(type) =>
-				type.extends.length === 0 &&
-				(type.body.body.length === 0 || type.body.body.every(isEffectivelyEmptyMember)),
-		)
-		.otherwise(() => false);
-}
 
 function resolvedSubstitutionArgument(
 	type: ESTree.TSType,
@@ -252,13 +74,13 @@ function resolvedSubstitutionArgument(
 		.otherwise(() => type);
 }
 
-class TypeQuery {
-	private readonly environment: TypeEnvironment;
+export class TypeQuery {
+	private readonly environment: Environment;
 	private readonly substitutions: TypeAliasEnvironment;
 	private readonly resolving: ReadonlySet<string>;
 
 	constructor(
-		environment: TypeEnvironment,
+		environment: Environment,
 		substitutions: TypeAliasEnvironment,
 		resolving: ReadonlySet<string>,
 	) {
@@ -615,42 +437,4 @@ class TypeQuery {
 	private isPropertyKey(typeName: string): boolean {
 		return typeName === 'PropertyKey' && this.environment.isBuiltIn(typeName);
 	}
-}
-
-export function unwrapEvidenceWrappers(expression: ESTree.Expression): ESTree.Expression {
-	return match(expression)
-		.with(
-			{
-				type: P.union(
-					'ParenthesizedExpression',
-					'TSAsExpression',
-					'TSTypeAssertion',
-					'TSNonNullExpression',
-					'TSSatisfiesExpression',
-				),
-			},
-			({ expression: inner }) => unwrapEvidenceWrappers(inner),
-		)
-		.otherwise((current) => current);
-}
-
-export function isKnownEvidenceExpression(expression: ESTree.Expression): boolean {
-	return match(unwrapEvidenceWrappers(expression))
-		.with(
-			{
-				type: P.union(
-					'ObjectExpression',
-					'ArrayExpression',
-					'ArrowFunctionExpression',
-					'ClassExpression',
-					'FunctionExpression',
-					'NewExpression',
-					'Literal',
-					'TemplateLiteral',
-					'UnaryExpression',
-				),
-			},
-			() => true,
-		)
-		.otherwise(() => false);
 }

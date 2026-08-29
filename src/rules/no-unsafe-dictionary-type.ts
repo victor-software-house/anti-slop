@@ -1,4 +1,4 @@
-import { TypeEnvironment } from '@anti-slop/shared/dictionary-types';
+import { TypeEnvironment } from '@anti-slop/shared/environment';
 import type { ESTree } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
 import { isMatching, match, P } from 'ts-pattern';
