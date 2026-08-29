@@ -8,8 +8,6 @@ import type { ESTree } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
 import { isMatching, match, P } from 'ts-pattern';
 
-const isTypeLiteral = isMatching({ type: 'TSTypeLiteral' });
-
 function referencedAliasName(node: ESTree.TSType): string | null {
 	return match(node)
 		.returnType<string | null>()
@@ -48,29 +46,26 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		let environment: TypeEnvironment | null = null;
+		let environment: TypeEnvironment = {
+			aliases: new Map(),
+			interfaces: new Map(),
+			shadowedBuiltIns: new Set(),
+		};
 
 		const report = (node: ESTree.Node, value: string) => {
 			context.report({ node, messageId: 'unsafeDictionary', data: { value } });
 		};
 
-		const checkType = (node: ESTree.Node) => {
-			if (
-				!isMatching({ type: P.union('TSTypeReference', 'TSTypeLiteral', 'TSMappedType') }, node)
-			) {
-				return;
-			}
-			match(environment)
-				.with(P.nullish, () => undefined)
-				.otherwise((env) =>
-					match({
-						alias: isPlainAliasConsumerUse(node, env),
-						unsafe: classifyUnsafeDictionary(node, env),
-					})
-						.with({ alias: true }, () => undefined)
-						.with({ unsafe: P.nonNullable }, ({ unsafe }) => report(node, unsafe.unsafeValue))
-						.otherwise(() => undefined),
-				);
+		const checkType = (
+			node: ESTree.TSMappedType | ESTree.TSTypeLiteral | ESTree.TSTypeReference,
+		) => {
+			match({
+				alias: isPlainAliasConsumerUse(node, environment),
+				unsafe: classifyUnsafeDictionary(node, environment),
+			})
+				.with({ alias: true }, () => undefined)
+				.with({ unsafe: P.nonNullable }, ({ unsafe }) => report(node, unsafe.unsafeValue))
+				.otherwise(() => undefined);
 		};
 
 		return {
@@ -80,19 +75,14 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 			'TSTypeReference:not(TSTypeParameterInstantiation TSTypeReference)': checkType,
 			'TSTypeLiteral:not(TSTypeParameterInstantiation TSTypeLiteral)': checkType,
 			'TSMappedType:not(TSTypeParameterInstantiation TSMappedType)': checkType,
-			TSIndexSignature(node) {
-				match({
-					enclosingLiteral: isTypeLiteral(node.parent),
-					env: environment,
-					annotation: node.typeAnnotation,
-				})
-					.with({ enclosingLiteral: true }, () => undefined)
-					.with({ env: P.nonNullable, annotation: P.nonNullable }, ({ env, annotation }) =>
-						match(classifyUnsafeDictionaryValue(annotation.typeAnnotation, env))
+			'TSIndexSignature:not(TSTypeLiteral > TSIndexSignature)'(node: ESTree.TSIndexSignature) {
+				match(node.typeAnnotation)
+					.with(P.nullish, () => undefined)
+					.otherwise((annotation) =>
+						match(classifyUnsafeDictionaryValue(annotation.typeAnnotation, environment))
 							.with(P.nonNullable, (unsafe) => report(node, unsafe.unsafeValue))
 							.otherwise(() => undefined),
-					)
-					.otherwise(() => undefined);
+					);
 			},
 		};
 	},

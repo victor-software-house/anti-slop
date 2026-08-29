@@ -635,22 +635,6 @@ function classifyAliasBroadTypeReference(
 		});
 }
 
-function unwrapAssertionWrappers(expression: ESTree.Expression): ESTree.Expression {
-	return match(expression)
-		.with(
-			{
-				type: P.union(
-					'ParenthesizedExpression',
-					'TSAsExpression',
-					'TSTypeAssertion',
-					'TSNonNullExpression',
-				),
-			},
-			({ expression: inner }) => unwrapAssertionWrappers(inner),
-		)
-		.otherwise((current) => current);
-}
-
 export function unwrapEvidenceWrappers(expression: ESTree.Expression): ESTree.Expression {
 	return match(expression)
 		.with(
@@ -666,12 +650,6 @@ export function unwrapEvidenceWrappers(expression: ESTree.Expression): ESTree.Ex
 			({ expression: inner }) => unwrapEvidenceWrappers(inner),
 		)
 		.otherwise((current) => current);
-}
-
-export function isPopulatedObjectExpression(expression: ESTree.Expression): boolean {
-	return match(unwrapAssertionWrappers(expression))
-		.with({ type: 'ObjectExpression' }, ({ properties }) => properties.length > 0)
-		.otherwise(() => false);
 }
 
 export function isKnownEvidenceExpression(expression: ESTree.Expression): boolean {

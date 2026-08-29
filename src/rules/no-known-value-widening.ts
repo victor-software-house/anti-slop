@@ -5,6 +5,7 @@ import {
 	isKnownEvidenceExpression,
 	unwrapEvidenceWrappers,
 } from '@anti-slop/shared/dictionary-types';
+import { resolveVariable } from '@anti-slop/shared/resolve-variable';
 import type { ESTree, SourceCode, Variable } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
 import { isMatching, match, P } from 'ts-pattern';
@@ -24,26 +25,6 @@ function isFunctionLike(node: ESTree.Node): node is FunctionExpression {
 		},
 		node,
 	);
-}
-
-function isTypeAssertionExpression(
-	node: ESTree.Node,
-): node is ESTree.TSAsExpression | ESTree.TSTypeAssertion {
-	return isMatching({ type: P.union('TSAsExpression', 'TSTypeAssertion') }, node);
-}
-
-function resolveVariable(
-	sourceCode: SourceCode,
-	identifier: ESTree.IdentifierReference,
-): Variable | null {
-	return match(
-		sourceCode
-			.getScope(identifier)
-			.references.find((reference) => reference.identifier.start === identifier.start),
-	)
-		.returnType<Variable | null>()
-		.with(P.nullish, () => null)
-		.otherwise((reference) => reference.resolved);
 }
 
 function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | null {
@@ -163,7 +144,11 @@ export const noKnownValueWideningRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		let environment: TypeEnvironment | null = null;
+		let environment: TypeEnvironment = {
+			aliases: new Map(),
+			interfaces: new Map(),
+			shadowedBuiltIns: new Set(),
+		};
 		const boundNames = new WeakMap<FunctionExpression, string>();
 
 		const reportFlow = (
@@ -190,9 +175,7 @@ export const noKnownValueWideningRule = defineRule({
 				});
 
 		const targetFromAnnotation = (annotation: ESTree.TSTypeAnnotation | null | undefined) =>
-			match(environment)
-				.with(P.nullish, () => null)
-				.otherwise((env) => annotationTarget(annotation, env));
+			annotationTarget(annotation, environment);
 
 		const bindFunctionName = (expression: ESTree.Expression | null | undefined, name: string) => {
 			match(expression)
@@ -205,19 +188,12 @@ export const noKnownValueWideningRule = defineRule({
 				.otherwise(() => undefined);
 		};
 
-		const checkAssertion = (node: ESTree.Node) => {
-			if (!isTypeAssertionExpression(node)) {
-				return;
-			}
-			match(environment)
-				.with(P.nonNullable, (env) =>
-					reportFlow(
-						node.expression,
-						classifyWideningTarget(node.typeAnnotation, env),
-						'assertion',
-					),
-				)
-				.otherwise(() => undefined);
+		const checkAssertion = (node: ESTree.TSAsExpression | ESTree.TSTypeAssertion) => {
+			reportFlow(
+				node.expression,
+				classifyWideningTarget(node.typeAnnotation, environment),
+				'assertion',
+			);
 		};
 
 		return {

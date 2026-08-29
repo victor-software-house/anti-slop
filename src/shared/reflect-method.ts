@@ -1,19 +1,6 @@
-import type { ESTree, SourceCode, Variable } from '@oxlint/plugins';
+import { resolveVariable } from '@anti-slop/shared/resolve-variable';
+import type { ESTree, SourceCode } from '@oxlint/plugins';
 import { match, P } from 'ts-pattern';
-
-function resolveVariable(
-	sourceCode: SourceCode,
-	identifier: ESTree.IdentifierReference,
-): Variable | null {
-	return match(
-		sourceCode
-			.getScope(identifier)
-			.references.find((reference) => reference.identifier.start === identifier.start),
-	)
-		.returnType<Variable | null>()
-		.with(P.nullish, () => null)
-		.otherwise((reference) => reference.resolved);
-}
 
 function isGlobalReflect(sourceCode: SourceCode, expression: ESTree.Expression): boolean {
 	return match(expression)

@@ -1,6 +1,12 @@
 {
 	"$schema": "https://unpkg.com/knip@6/schema.json",
-	"entry": ["mise-tasks/**/*.ts", "test/**/*.test.ts"],
+	"entry": [
+		"src/index.ts",
+		"src/effect/index.ts",
+		"mise-tasks/**/*.ts",
+		".changeset/changelog.ts",
+		"test/**/*.test.ts"
+	],
 	"project": [
 		"src/**/*.ts",
 		"test/**/*.ts",
@@ -10,8 +16,5 @@
 	],
 	"ignoreExportsUsedInFile": true,
 	"ignoreBinaries": ["mise"],
-	"ignoreDependencies": ["@biomejs/biome", "@changesets/cli", "@commitlint/cli"],
-	"ignoreIssues": {
-		"src/shared/dictionary-types.ts": ["exports"]
-	}
+	"ignoreDependencies": ["@biomejs/biome", "@changesets/cli", "@commitlint/cli"]
 }

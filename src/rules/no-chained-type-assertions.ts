@@ -1,12 +1,8 @@
 import type { ESTree } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
-import { isMatching, match, P } from 'ts-pattern';
+import { match, P } from 'ts-pattern';
 
 type TypeAssertionExpression = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
-
-function isTypeAssertionExpression(node: ESTree.Node): node is TypeAssertionExpression {
-	return isMatching({ type: P.union('TSAsExpression', 'TSTypeAssertion') }, node);
-}
 
 function unwrapParenthesizedExpression(expression: ESTree.Expression): ESTree.Expression {
 	return match(expression)
@@ -59,10 +55,7 @@ export const noChainedTypeAssertionsRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		const checkAssertion = (node: ESTree.Node) => {
-			if (!isTypeAssertionExpression(node)) {
-				return;
-			}
+		const checkAssertion = (node: TypeAssertionExpression) => {
 			match(isForbiddenAssertionChain(node))
 				.with(true, () => {
 					context.report({ node, messageId: 'chained' });

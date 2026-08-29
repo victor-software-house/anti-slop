@@ -1,22 +1,9 @@
-import type { ESTree, SourceCode, Variable } from '@oxlint/plugins';
+import { resolveVariable } from '@anti-slop/shared/resolve-variable';
+import type { ESTree, SourceCode } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
 import { match, P } from 'ts-pattern';
 
 const moduleMockMethods = new Set(['doMock', 'mock', 'unstable_mockModule']);
-
-function resolveVariable(
-	sourceCode: SourceCode,
-	identifier: ESTree.IdentifierReference,
-): Variable | null {
-	return match(
-		sourceCode
-			.getScope(identifier)
-			.references.find((reference) => reference.identifier.start === identifier.start),
-	)
-		.returnType<Variable | null>()
-		.with(P.nullish, () => null)
-		.otherwise((reference) => reference.resolved);
-}
 
 function importedName(node: ESTree.Node): string | null {
 	return match(node)
@@ -43,8 +30,10 @@ function isTestFrameworkObject(
 				variable: resolveVariable(sourceCode, identifier),
 			})
 				.with({ name: P.union('vi', 'jest'), global: true }, () => true)
-				.with({ name: P.union('vi', 'jest'), variable: P.nullish }, () => true)
-				.with({ name: P.union('vi', 'jest'), variable: { defs: [] } }, () => true)
+				.with(
+					{ name: P.union('vi', 'jest'), variable: P.union(P.nullish, { defs: [] }) },
+					() => true,
+				)
 				.otherwise(({ variable }) =>
 					match(variable)
 						.with(P.nullish, () => false)
