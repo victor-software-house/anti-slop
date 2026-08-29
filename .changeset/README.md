@@ -6,4 +6,4 @@ Create a changeset for every user-visible change:
 bunx changeset
 ```
 
-CI owns `changeset version` and `changeset publish`. Do not run them locally.
+CI owns `changeset version`. Publish is `bun publish`. Do not run either locally.

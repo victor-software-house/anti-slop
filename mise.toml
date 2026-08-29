@@ -86,8 +86,8 @@ description = "Generate Changesets version PR changes"
 run = "changeset version"
 
 [tasks.release]
-description = "Publish to public npm via Changesets"
-run = "changeset publish"
+description = "Publish to public npm with bun"
+run = "bun publish --access public"
 
 [tasks."lockfile:sync"]
 description = "Verify bun.lock matches package.json"

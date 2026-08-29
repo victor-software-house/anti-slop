@@ -70,11 +70,17 @@ Versioning is changeset-driven after a one-time `0.0.0` bootstrap.
    **no** changeset file. Operator publishes it once
    (`bun publish --access public`), tags `v0.0.0`, and configures npm trusted
    publishing for [`.github/workflows/release.yml`](./.github/workflows/release.yml).
+   `npm trust` needs the package to exist; that is the only npm CLI step.
 2. Later functional PRs add a `.changeset/*.md` file. Default bump is `patch`.
 3. `changesets/action` opens a "Version Packages" PR. Operator merges it → CI
-   publishes via OIDC.
+   publishes with `bun publish` under OIDC.
 
-- Never run `changeset version` or `changeset publish` locally.
+- Never run `changeset version` or `changeset publish`. Changesets versions;
+  bun publishes. `changeset publish` shells out to npm.
+- Never invoke `npm` for install, pack, or publish. Pack is `bun pm pack`.
+  Publish is `bun publish`.
+- Bun is the package manager (`packageManager` + `devEngines.packageManager`).
+  Node is the plugin runtime (`engines.node` + `devEngines.runtime`).
 - Never hand-edit versions in `package.json` or `CHANGELOG.md` after the
   `0.0.0` scaffold.
 - Never `major` on `0.x` unless explicitly decided.
