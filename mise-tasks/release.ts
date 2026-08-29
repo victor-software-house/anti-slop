@@ -14,7 +14,6 @@ import {
 } from '@mise-tasks/release/lib';
 import { $ } from 'bun';
 
-const NPM_PUBLISH = '11.19.0';
 const specifier = `${name}@${version}`;
 
 if (!(await thisCommitBumpedVersion(version))) {
@@ -28,7 +27,12 @@ if (await registryHasVersion(name, version)) {
 }
 
 if (env['GITHUB_ACTIONS'] === 'true') {
-	await $`bunx npm@${NPM_PUBLISH} publish --access public --provenance`;
+	const npmVersion = (await $`npm --version`.text()).trim();
+	const [major, minor] = npmVersion.split('.').map(Number);
+	if (major === undefined || minor === undefined || major < 11 || (major === 11 && minor < 5)) {
+		throw new Error(`OIDC publish needs npm >= 11.5.1, got ${npmVersion}`);
+	}
+	await $`npm publish --access public --provenance`;
 } else {
 	await $`bun publish --access public`;
 }

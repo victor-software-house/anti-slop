@@ -75,30 +75,29 @@ Release is changelog notes plus the `v*` tag.
 3. `changesets/action` opens a **"Version Packages" PR** (`mise run version` →
    `changeset version` + `bun update --lockfile-only`). The PR title is the
    commit title (`chore(release): version packages`).
-4. Operator squash-merges with an **explicit** subject and empty body:
+4. Operator merges that PR. GitHub deletes the head branch
+   (`delete_branch_on_merge`). CI then runs `mise run release`, then
+   `mise run release:tags`.
 
-   ```bash
-   gh pr merge --squash --subject "$(gh pr view --json title --jq .title)" --body ""
-   ```
+   If squash-merging from the web UI, clear the generated `Co-authored-by:`
+   trailer. GitHub injects it whenever it generates the squash message; that is
+   not a repository setting.
 
-   Do not use the GitHub merge box. GitHub generates the squash message whenever
-   you omit `--subject`/`--body`, and that generated message always gets a
-   `Co-authored-by:` trailer for `github-actions[bot]` (the Version Packages
-   commit author) even when the bot is already the commit author. Only a
-   caller-supplied message is used verbatim.
-
-   After merge, CI runs `mise run release`, then `mise run release:tags`.
-
-`0.0.0` was a one-time bootstrap: operator `bun publish --access public`, tag
-`v0.0.0`, then `npm trust` for
+`0.0.0` was a one-time bootstrap: operator `bun publish --access public` with a
+local npmjs token, tag `v0.0.0`, then `npm trust` for
 [`.github/workflows/release.yml`](./.github/workflows/release.yml). Later
-versions are `0.0.1` onward from patch changesets.
+versions are `0.0.1` onward from patch changesets. That local path is not OIDC.
 
 - **Never run `changeset version` or `changeset publish` locally.** Never
   hand-edit `package.json` version or `CHANGELOG.md` after the `0.0.0` scaffold.
-- **CI publish uses `bunx npm@11.19.0 publish --access public --provenance`.**
-  Bun cannot do npm OIDC (oven-sh/bun#22423). Local emergency publish stays
-  `bun publish --access public`. Pack is `bun pm pack`.
+- **CI publish is `npm publish --access public --provenance` from mise Node
+  (npm 11.19.0).** npm 11.5+ exchanges GitHub OIDC. `bun publish` cannot
+  (oven-sh/bun#22423). Local emergency publish stays `bun publish --access
+  public`. Pack is `bun pm pack`.
+- Workflows set `MISE_ENV=ci`, which loads [`mise.ci.toml`](./mise.ci.toml)
+  (`NPM_CONFIG_FORCE=true`). That is npm's only skip for
+  `devEngines.packageManager` (`EBADDEVENGINES`). Do not use `bunx npm`.
+  Locally the bun pin stays an error.
 - Do not add `NPM_TOKEN` / `NODE_AUTH_TOKEN`. Do not pass `publish:` to
   `changesets/action` — that forfeits explicit tags and GitHub Releases.
 - Bun is the package manager (`packageManager` + `devEngines.packageManager`).

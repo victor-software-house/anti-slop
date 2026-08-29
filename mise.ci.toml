@@ -1,0 +1,4 @@
+# Loaded only when MISE_ENV=ci (GitHub Actions). npm has no --ignore-dev-engines;
+# --force is the documented skip for EBADDEVENGINES (npm/rfcs#830).
+[env]
+NPM_CONFIG_FORCE = "true"
