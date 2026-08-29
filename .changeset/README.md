@@ -6,6 +6,5 @@ Create a changeset for every user-visible change:
 bunx changeset
 ```
 
-CI owns `changeset version`. CI publish is
-`bun publish --access public --tolerate-republish` after an OIDC token
-exchange. Do not run either locally.
+CI owns `changeset version`. CI publish is `mise run release:oidc` then
+`bun publish --access public --tolerate-republish`. Do not run either locally.

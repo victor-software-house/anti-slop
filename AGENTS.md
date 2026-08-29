@@ -76,8 +76,8 @@ Release is changelog notes plus the `v*` tag.
    `changeset version` + `bun update --lockfile-only`). The PR title is the
    commit title (`chore(release): version packages`).
 4. Operator merges that PR. GitHub deletes the head branch
-   (`delete_branch_on_merge`). CI then runs `mise run release`, then
-   `mise run release:tags`.
+   (`delete_branch_on_merge`). CI then runs `mise run release:oidc`,
+   `mise run release`, then `mise run release:tags`.
 
    If squash-merging from the web UI, clear the generated `Co-authored-by:`
    trailer. GitHub injects it whenever it generates the squash message; that is
@@ -90,20 +90,24 @@ versions are `0.0.1` onward from patch changesets. That local path is not OIDC.
 
 - **Never run `changeset version` or `changeset publish` locally.** Never
   hand-edit `package.json` version or `CHANGELOG.md` after the `0.0.0` scaffold.
-- **CI publishes with `bun publish --access public --tolerate-republish`.**
-  There is no npm OIDC library (`libnpmpublish` still does not export it —
-  npm/cli#9503). The release task does the two-call handshake itself (GitHub
-  `id-token` → npm `/-/npm/v1/oidc/token/exchange/package/…`), then sets
-  `NPM_CONFIG_TOKEN` for bun. Do not use `bunx npm` or `NPM_CONFIG_FORCE`.
+- **CI mints OIDC, then publishes with bun.** There is no npm OIDC library
+  (`libnpmpublish` still does not export it — npm/cli#9503).
+  `mise run release:oidc` does the two-call handshake (GitHub `id-token` → npm
+  `/-/npm/v1/oidc/token/exchange/package/…`) and writes `BUN_CONFIG_TOKEN` to
+  `GITHUB_ENV`. The next step is `mise run release` →
+  `bun publish --access public --tolerate-republish`. Bun reads the token from
+  [`bunfig.toml`](./bunfig.toml) (`token = "$BUN_CONFIG_TOKEN"`), not npm's
+  `NPM_CONFIG_TOKEN` / `NPM_TOKEN`. Do not use `bunx npm` or `NPM_CONFIG_FORCE`.
   Already-published versions skip via `--tolerate-republish` (and a registry
-  check before the handshake). Local emergency publish is the same `bun
-  publish` with an operator npmjs token.
+  check before publish). Local emergency publish is the same `bun publish`
+  with `BUN_CONFIG_TOKEN` set to an operator npmjs token.
 - Do not add `NPM_TOKEN` / `NODE_AUTH_TOKEN`. Do not pass `publish:` to
   `changesets/action` — that forfeits explicit tags and GitHub Releases.
 - Bun is the package manager (`packageManager` + `devEngines.packageManager`).
   Node is the plugin runtime (`engines.node` + `devEngines.runtime`).
 - [`bunfig.toml`](./bunfig.toml) pins `@victor-software-house` to
-  `registry.npmjs.org`. Bun has no per-package registry key.
+  `registry.npmjs.org` with `token = "$BUN_CONFIG_TOKEN"`. Bun has no
+  per-package registry key. Never add a repo `.npmrc`.
 - Never `major` on `0.x` unless explicitly decided.
 
 ## Attribution

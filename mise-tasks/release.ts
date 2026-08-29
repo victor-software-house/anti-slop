@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-//MISE description="Publish to public npm (OIDC then bun publish in CI)"
+//MISE description="Publish to public npm with bun"
 //MISE dir="{{ config_root }}"
 
 import { mkdtemp } from 'node:fs/promises';
@@ -8,7 +8,6 @@ import { join } from 'node:path';
 import { env, exit, stdout } from 'node:process';
 import {
 	name,
-	npmOidcPublishToken,
 	registryHasVersion,
 	thisCommitBumpedVersion,
 	version,
@@ -27,15 +26,7 @@ if (await registryHasVersion(name, version)) {
 	exit(0);
 }
 
-if (env['GITHUB_ACTIONS'] === 'true') {
-	const token = await npmOidcPublishToken(name, env);
-	await $`bun publish --access public --tolerate-republish`.env({
-		...env,
-		NPM_CONFIG_TOKEN: token,
-	});
-} else {
-	await $`bun publish --access public --tolerate-republish`;
-}
+await $`bun publish --access public --tolerate-republish`;
 
 for (let attempt = 0; attempt < 12; attempt += 1) {
 	if (await registryHasVersion(name, version)) {
