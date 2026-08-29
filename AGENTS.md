@@ -90,13 +90,14 @@ versions are `0.0.1` onward from patch changesets. That local path is not OIDC.
 
 - **Never run `changeset version` or `changeset publish` locally.** Never
   hand-edit `package.json` version or `CHANGELOG.md` after the `0.0.0` scaffold.
-- **CI publishes with `bun publish --access public`.** There is no npm OIDC
-  library (`libnpmpublish` still does not export it — npm/cli#9503). The
-  release task does the two-call handshake itself (GitHub `id-token` → npm
-  `/-/npm/v1/oidc/token/exchange/package/…`), then sets `NPM_CONFIG_TOKEN` for
-  bun. Do not use `bunx npm` or `NPM_CONFIG_FORCE`. If the version is already
-  on the registry, `mise run release` skips before publish. Local emergency
-  publish is the same `bun publish` with an operator npmjs token.
+- **CI publishes with `bun publish --access public --tolerate-republish`.**
+  There is no npm OIDC library (`libnpmpublish` still does not export it —
+  npm/cli#9503). The release task does the two-call handshake itself (GitHub
+  `id-token` → npm `/-/npm/v1/oidc/token/exchange/package/…`), then sets
+  `NPM_CONFIG_TOKEN` for bun. Do not use `bunx npm` or `NPM_CONFIG_FORCE`.
+  Already-published versions skip via `--tolerate-republish` (and a registry
+  check before the handshake). Local emergency publish is the same `bun
+  publish` with an operator npmjs token.
 - Do not add `NPM_TOKEN` / `NODE_AUTH_TOKEN`. Do not pass `publish:` to
   `changesets/action` — that forfeits explicit tags and GitHub Releases.
 - Bun is the package manager (`packageManager` + `devEngines.packageManager`).

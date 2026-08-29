@@ -29,12 +29,12 @@ if (await registryHasVersion(name, version)) {
 
 if (env['GITHUB_ACTIONS'] === 'true') {
 	const token = await npmOidcPublishToken(name, env);
-	await $`bun publish --access public`.env({
+	await $`bun publish --access public --tolerate-republish`.env({
 		...env,
 		NPM_CONFIG_TOKEN: token,
 	});
 } else {
-	await $`bun publish --access public`;
+	await $`bun publish --access public --tolerate-republish`;
 }
 
 for (let attempt = 0; attempt < 12; attempt += 1) {
