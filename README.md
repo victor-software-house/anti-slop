@@ -105,11 +105,12 @@ constructors such as `WorkspaceName.make` are out of scope.
 ## Attribution
 
 Rule ideas originated in [dmmulroy/anti-slop][upstream]. This package is owned,
-published, and maintained by Victor Software House.
+published, and maintained by [Victor Software House][vsh].
 
 ## License
 
 MIT. Dillon Mulroy's copyright notice is retained. Victor Araújo's is listed
 under it. See [LICENSE](./LICENSE).
 
+[vsh]: https://github.com/victor-software-house
 [upstream]: https://github.com/dmmulroy/anti-slop
