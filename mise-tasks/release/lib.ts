@@ -77,16 +77,21 @@ export async function npmOidcPublishToken(
 }
 
 export async function registryHasVersion(name: string, version: string): Promise<boolean> {
-	const response = await fetch(`https://registry.npmjs.org/${name}/${version}`, {
+	const response = await fetch(`https://registry.npmjs.org/${name.replace('/', '%2F')}`, {
 		headers: { Accept: 'application/vnd.npm.install-v1+json' },
 	});
-	if (response.status === 200) {
-		return true;
-	}
 	if (response.status === 404) {
 		return false;
 	}
-	throw new Error(`npm registry lookup failed (${response.status}) for ${name}@${version}`);
+	if (!response.ok) {
+		throw new Error(`npm registry lookup failed (${response.status}) for ${name}@${version}`);
+	}
+	const body: unknown = await response.json();
+	return match(body)
+		.with({ versions: P.record(P.string, P.unknown) }, ({ versions }) => version in versions)
+		.otherwise(() => {
+			throw new Error(`npm registry packument missing versions for ${name}@${version}`);
+		});
 }
 
 export function changelogSection(changelog: string, version: string): string {
