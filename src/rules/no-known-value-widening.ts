@@ -1,8 +1,7 @@
-import type { TypeEnvironment, WideningTarget } from '@anti-slop/shared/dictionary-types';
+import type { WideningTarget } from '@anti-slop/shared/dictionary-types';
 import {
-	classifyWideningTarget,
-	createTypeEnvironment,
 	isKnownEvidenceExpression,
+	TypeEnvironment,
 	unwrapEvidenceWrappers,
 } from '@anti-slop/shared/dictionary-types';
 import { resolveVariable } from '@anti-slop/shared/resolve-variable';
@@ -87,7 +86,7 @@ function annotationTarget(
 ): WideningTarget | null {
 	return match(annotation)
 		.with(P.nullish, () => null)
-		.otherwise((value) => classifyWideningTarget(value.typeAnnotation, environment));
+		.otherwise((value) => environment.classifyWideningTarget(value.typeAnnotation));
 }
 
 function functionName(
@@ -144,11 +143,7 @@ export const noKnownValueWideningRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		let environment: TypeEnvironment = {
-			aliases: new Map(),
-			interfaces: new Map(),
-			shadowedBuiltIns: new Set(),
-		};
+		let environment = TypeEnvironment.empty();
 		const boundNames = new WeakMap<FunctionExpression, string>();
 
 		const reportFlow = (
@@ -191,14 +186,14 @@ export const noKnownValueWideningRule = defineRule({
 		const checkAssertion = (node: ESTree.TSAsExpression | ESTree.TSTypeAssertion) => {
 			reportFlow(
 				node.expression,
-				classifyWideningTarget(node.typeAnnotation, environment),
+				environment.classifyWideningTarget(node.typeAnnotation),
 				'assertion',
 			);
 		};
 
 		return {
 			Program(node) {
-				environment = createTypeEnvironment(node);
+				environment = TypeEnvironment.fromProgram(node);
 			},
 			ArrowFunctionExpression(node) {
 				match(node.body)

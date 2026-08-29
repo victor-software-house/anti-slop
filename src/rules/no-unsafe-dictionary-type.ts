@@ -1,9 +1,4 @@
-import type { TypeEnvironment } from '@anti-slop/shared/dictionary-types';
-import {
-	classifyUnsafeDictionary,
-	classifyUnsafeDictionaryValue,
-	createTypeEnvironment,
-} from '@anti-slop/shared/dictionary-types';
+import { TypeEnvironment } from '@anti-slop/shared/dictionary-types';
 import type { ESTree } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
 import { isMatching, match, P } from 'ts-pattern';
@@ -46,11 +41,7 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		let environment: TypeEnvironment = {
-			aliases: new Map(),
-			interfaces: new Map(),
-			shadowedBuiltIns: new Set(),
-		};
+		let environment = TypeEnvironment.empty();
 
 		const report = (node: ESTree.Node, value: string) => {
 			context.report({ node, messageId: 'unsafeDictionary', data: { value } });
@@ -61,7 +52,7 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 		) => {
 			match({
 				alias: isPlainAliasConsumerUse(node, environment),
-				unsafe: classifyUnsafeDictionary(node, environment),
+				unsafe: environment.classifyUnsafeDictionary(node),
 			})
 				.with({ alias: true }, () => undefined)
 				.with({ unsafe: P.nonNullable }, ({ unsafe }) => report(node, unsafe.unsafeValue))
@@ -70,7 +61,7 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 
 		return {
 			Program(node) {
-				environment = createTypeEnvironment(node);
+				environment = TypeEnvironment.fromProgram(node);
 			},
 			'TSTypeReference:not(TSTypeParameterInstantiation TSTypeReference)': checkType,
 			'TSTypeLiteral:not(TSTypeParameterInstantiation TSTypeLiteral)': checkType,
@@ -79,7 +70,7 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 				match(node.typeAnnotation)
 					.with(P.nullish, () => undefined)
 					.otherwise((annotation) =>
-						match(classifyUnsafeDictionaryValue(annotation.typeAnnotation, environment))
+						match(environment.classifyUnsafeDictionaryValue(annotation.typeAnnotation))
 							.with(P.nonNullable, (unsafe) => report(node, unsafe.unsafeValue))
 							.otherwise(() => undefined),
 					);
