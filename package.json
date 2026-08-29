@@ -1,0 +1,83 @@
+{
+	"name": "anti-slop",
+	"version": "0.0.0",
+	"description": "Published fork of dmmulroy/anti-slop: Oxlint rules that reject low-evidence TypeScript patterns.",
+	"license": "MIT",
+	"author": {
+		"name": "Victor Araújo",
+		"email": "victor@victor-software-house.com"
+	},
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./effect": {
+			"types": "./dist/effect.d.ts",
+			"import": "./dist/effect.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"prepublishOnly": "mise run verify"
+	},
+	"engines": {
+		"node": ">=26"
+	},
+	"packageManager": "bun@1.4.0",
+	"devEngines": {
+		"runtime": {
+			"name": "bun",
+			"version": ">=1.4.0 <2.0.0"
+		},
+		"packageManager": {
+			"name": "bun",
+			"version": ">=1.4.0 <2.0.0"
+		}
+	},
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/victor-software-house/anti-slop.git"
+	},
+	"homepage": "https://github.com/victor-software-house/anti-slop#readme",
+	"bugs": {
+		"url": "https://github.com/victor-software-house/anti-slop/issues"
+	},
+	"keywords": [
+		"oxlint",
+		"eslint-plugin",
+		"typescript"
+	],
+	"dependencies": {
+		"@oxlint/plugins": "1.80.0",
+		"ts-pattern": "5.9.0"
+	},
+	"peerDependencies": {
+		"oxlint": "1.80.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.10",
+		"@changesets/cli": "2.31.1",
+		"@changesets/get-github-info": "0.8.0",
+		"@changesets/types": "6.1.0",
+		"@commitlint/cli": "21.2.2",
+		"@commitlint/config-conventional": "21.2.2",
+		"@types/bun": "1.4.0",
+		"liquidjs": "10.27.2",
+		"oxlint": "1.80.0",
+		"oxlint-tsgolint": "7.0.2001",
+		"tsdown": "0.22.14",
+		"typescript": "5.9.3"
+	}
+}
