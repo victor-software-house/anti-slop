@@ -90,14 +90,13 @@ versions are `0.0.1` onward from patch changesets. That local path is not OIDC.
 
 - **Never run `changeset version` or `changeset publish` locally.** Never
   hand-edit `package.json` version or `CHANGELOG.md` after the `0.0.0` scaffold.
-- **CI publish is `npm publish --access public --provenance` from mise Node
-  (npm 11.19.0).** npm 11.5+ exchanges GitHub OIDC. `bun publish` cannot
-  (oven-sh/bun#22423). Local emergency publish stays `bun publish --access
-  public`. Pack is `bun pm pack`.
-- Workflows set `MISE_ENV=ci`, which loads [`mise.ci.toml`](./mise.ci.toml)
-  (`NPM_CONFIG_FORCE=true`). That is npm's only skip for
-  `devEngines.packageManager` (`EBADDEVENGINES`). Do not use `bunx npm`.
-  Locally the bun pin stays an error.
+- **CI publishes with `bun publish --access public`.** There is no npm OIDC
+  library (`libnpmpublish` still does not export it — npm/cli#9503). The
+  release task does the two-call handshake itself (GitHub `id-token` → npm
+  `/-/npm/v1/oidc/token/exchange/package/…`), then sets `NPM_CONFIG_TOKEN` for
+  bun. Do not use `bunx npm` or `NPM_CONFIG_FORCE`. If the version is already
+  on the registry, `mise run release` skips before publish. Local emergency
+  publish is the same `bun publish` with an operator npmjs token.
 - Do not add `NPM_TOKEN` / `NODE_AUTH_TOKEN`. Do not pass `publish:` to
   `changesets/action` — that forfeits explicit tags and GitHub Releases.
 - Bun is the package manager (`packageManager` + `devEngines.packageManager`).

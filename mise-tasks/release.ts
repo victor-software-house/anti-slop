@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-//MISE description="Publish to public npm (OIDC via npm in CI, bun locally)"
+//MISE description="Publish to public npm (OIDC then bun publish in CI)"
 //MISE dir="{{ config_root }}"
 
 import { mkdtemp } from 'node:fs/promises';
@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { env, exit, stdout } from 'node:process';
 import {
 	name,
+	npmOidcPublishToken,
 	registryHasVersion,
 	thisCommitBumpedVersion,
 	version,
@@ -27,12 +28,11 @@ if (await registryHasVersion(name, version)) {
 }
 
 if (env['GITHUB_ACTIONS'] === 'true') {
-	const npmVersion = (await $`npm --version`.text()).trim();
-	const [major, minor] = npmVersion.split('.').map(Number);
-	if (major === undefined || minor === undefined || major < 11 || (major === 11 && minor < 5)) {
-		throw new Error(`OIDC publish needs npm >= 11.5.1, got ${npmVersion}`);
-	}
-	await $`npm publish --access public --provenance`;
+	const token = await npmOidcPublishToken(name, env);
+	await $`bun publish --access public`.env({
+		...env,
+		NPM_CONFIG_TOKEN: token,
+	});
 } else {
 	await $`bun publish --access public`;
 }

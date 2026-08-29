@@ -6,5 +6,5 @@ Create a changeset for every user-visible change:
 bunx changeset
 ```
 
-CI owns `changeset version`. CI publish is `npm publish` under OIDC. Do not
-run either locally.
+CI owns `changeset version`. CI publish is `bun publish` after an OIDC
+token exchange. Do not run either locally.
