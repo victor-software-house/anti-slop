@@ -81,9 +81,8 @@ Versioning is changeset-driven after a one-time `0.0.0` bootstrap.
   Publish is `bun publish`.
 - Bun is the package manager (`packageManager` + `devEngines.packageManager`).
   Node is the plugin runtime (`engines.node` + `devEngines.runtime`).
-- [`bunfig.toml`](./bunfig.toml) pins `@victor-software-house` in this checkout
-  to `registry.npmjs.org`. Bun has no per-package registry key. Do not point it
-  at GitHub Packages.
+- [`bunfig.toml`](./bunfig.toml) pins `@victor-software-house` to
+  `registry.npmjs.org`. Bun has no per-package registry key.
 - Never hand-edit versions in `package.json` or `CHANGELOG.md` after the
   `0.0.0` scaffold.
 - Never `major` on `0.x` unless explicitly decided.

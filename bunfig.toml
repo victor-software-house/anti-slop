@@ -1,5 +1,2 @@
-# Bun matches [install.scopes] by org only — a package-name key is ignored.
-# This checkout publishes anti-slop to public npm; pin the org here so
-# ~/.bunfig.toml cannot send bun publish to GitHub Packages.
 [install.scopes]
 "@victor-software-house" = { url = "https://registry.npmjs.org" }
