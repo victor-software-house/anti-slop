@@ -1,5 +1,6 @@
 import type { ESTree } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
+import { match } from 'ts-pattern';
 
 const FORBIDDEN_SYMBOL_NAME = 'shape';
 
@@ -21,19 +22,19 @@ export const noForbiddenTermInSymbolNamesRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		const reportForbiddenSymbolName = (node: ESTree.Node & { name: string }) => {
-			if (!containsForbiddenSymbolName(node.name)) return;
-			context.report({
-				node,
-				messageId: 'forbiddenSymbolName',
-				data: { name: node.name },
-			});
-		};
+		const reportForbiddenSymbolName = (node: ESTree.Node & { name: string }) =>
+			match(containsForbiddenSymbolName(node.name))
+				.with(true, () => {
+					context.report({
+						node,
+						messageId: 'forbiddenSymbolName',
+						data: { name: node.name },
+					});
+				})
+				.otherwise(() => undefined);
 
 		return {
-			Identifier: reportForbiddenSymbolName,
-			PrivateIdentifier: reportForbiddenSymbolName,
-			JSXIdentifier: reportForbiddenSymbolName,
+			'Identifier, PrivateIdentifier, JSXIdentifier': reportForbiddenSymbolName,
 		};
 	},
 });

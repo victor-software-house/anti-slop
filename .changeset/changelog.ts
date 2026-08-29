@@ -1,13 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { getInfo } from '@changesets/get-github-info';
+import { getCommitInfo } from '@changesets/get-github-info';
 import type {
 	ChangelogFunctions,
-	ModCompWithPackage,
-	NewChangesetWithCommit,
-	VersionType,
+	GetDependencyReleaseLine,
+	GetReleaseLine,
 } from '@changesets/types';
 import { Liquid } from 'liquidjs';
+import { match, P } from 'ts-pattern';
 
 type PullRequest = {
 	number: number;
@@ -20,7 +20,7 @@ type PullRequest = {
  * The commit that introduced the changeset.
  *
  * Only used when no PR is associated. A direct push to the base branch has no PR
- * for `getInfo` to find, and an entry with neither link is untraceable — which is
+ * for `getCommitInfo` to find, and an entry with neither link is untraceable — which is
  * what the PR-only template produced for every release in a direct-push flow.
  */
 type Commit = {
@@ -41,6 +41,11 @@ type ReleaseTemplateData = {
 	summaryHasTerminal: boolean;
 };
 
+type DependencyTemplateData = {
+	readonly name: string;
+	readonly newVersion: string;
+};
+
 const releaseTemplatePath = fileURLToPath(new URL('./changelog.liquid', import.meta.url));
 const dependencyTemplatePath = fileURLToPath(
 	new URL('./dependency-changelog.liquid', import.meta.url),
@@ -59,127 +64,127 @@ const dependencyTemplate = liquid.parse(
 	dependencyTemplatePath,
 );
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null;
-}
-
-function getChangelogOptions(value: unknown): ChangelogOptions {
-	if (!isRecord(value)) return {};
-
-	const internalAuthors = value['internalAuthors'];
-	const repo = value['repo'];
-	const options: ChangelogOptions = {};
-
-	if (
-		Array.isArray(internalAuthors) &&
-		internalAuthors.every((author) => typeof author === 'string')
-	) {
-		options.internalAuthors = internalAuthors;
-	}
-	if (typeof repo === 'string') {
-		options.repo = repo;
-	}
-
-	return options;
-}
-
-function markdownLinkUrl(markdown: string): string {
-	return markdown.match(/\]\((.+)\)$/)?.[1] ?? '';
-}
-
-// Liquid types renderSync as `any`; narrow once here instead of at each call site.
-function renderTemplate(
-	template: ReturnType<Liquid['parse']>,
-	scope: Record<string, unknown>,
-): string {
-	const rendered: unknown = liquid.renderSync(template, scope);
-	return typeof rendered === 'string' ? rendered : '';
-}
-
 function renderReleaseTemplate(release: ReleaseTemplateData): string {
-	return renderTemplate(releaseTemplate, { release });
+	return match(liquid.renderSync(releaseTemplate, { release }))
+		.with(P.string, (text) => text)
+		.otherwise(() => '');
 }
 
-function renderDependencyTemplate(
-	dependencies: Pick<ModCompWithPackage, 'name' | 'newVersion'>[],
-): string {
-	return renderTemplate(dependencyTemplate, { dependencies });
+function renderDependencyTemplate(dependencies: readonly DependencyTemplateData[]): string {
+	return match(liquid.renderSync(dependencyTemplate, { dependencies }))
+		.with(P.string, (text) => text)
+		.otherwise(() => '');
 }
 
-export async function getReleaseLine(
-	changeset: NewChangesetWithCommit,
-	_type: VersionType,
-	options: unknown,
-): Promise<string> {
-	const { internalAuthors = [], repo } = getChangelogOptions(options);
+function pullRequestFromCommitInfo(
+	info: {
+		readonly pull?: { readonly number: number; readonly url: string };
+		readonly author?: { readonly login: string; readonly url: string };
+	},
+	internalAuthors: readonly string[],
+): (PullRequest & { externalAuthor: boolean }) | null {
+	return match(info.pull)
+		.returnType<(PullRequest & { externalAuthor: boolean }) | null>()
+		.with(P.nullish, () => null)
+		.otherwise((pull) =>
+			match(info.author)
+				.returnType<PullRequest & { externalAuthor: boolean }>()
+				.with({ login: P.string, url: P.string }, ({ login, url }) => ({
+					number: pull.number,
+					url: pull.url,
+					user: login,
+					userUrl: url,
+					externalAuthor: login !== '' && url !== '' && !internalAuthors.includes(login),
+				}))
+				.otherwise(() => ({
+					number: pull.number,
+					url: pull.url,
+					user: null,
+					userUrl: null,
+					externalAuthor: false,
+				})),
+		);
+}
+
+export const getReleaseLine: GetReleaseLine = async (changeset, _type, changelogOpts) => {
+	const { internalAuthors = [], repo } = match(changelogOpts)
+		.returnType<ChangelogOptions>()
+		.with(P.nullish, () => ({}))
+		.with({ repo: P.string, internalAuthors: P.array(P.string) }, (value) => ({
+			repo: value.repo,
+			internalAuthors: value.internalAuthors,
+		}))
+		.with({ repo: P.string }, (value) => ({ repo: value.repo }))
+		.with({ internalAuthors: P.array(P.string) }, (value) => ({
+			internalAuthors: value.internalAuthors,
+		}))
+		.otherwise(() => ({}));
 	const [firstLine = '', ...remaining] = changeset.summary
 		.split('\n')
 		.map((line) => line.trimEnd());
-	let pullRequest: PullRequest | null = null;
-	let commit: Commit | null = null;
 
-	if (changeset.commit != null && changeset.commit !== '') {
-		if (repo == null || repo === '') {
+	const linked = await match({ sha: changeset.commit, repo })
+		.returnType<
+			Promise<{
+				commit: Commit | null;
+				pullRequest: (PullRequest & { externalAuthor: boolean }) | null;
+			}>
+		>()
+		.with({ sha: P.union(P.nullish, '') }, async () => ({ commit: null, pullRequest: null }))
+		.with({ sha: P.string, repo: P.union(P.nullish, '') }, () => {
 			throw new Error('options.repo is required for commit-backed releases');
-		}
-
-		commit = {
-			short: changeset.commit.slice(0, 7),
-			url: `https://github.com/${repo}/commit/${changeset.commit}`,
-		};
-
-		const info = await getInfo({ repo, commit: changeset.commit });
-		if (info.pull != null && info.links.pull != null && info.links.pull !== '') {
-			pullRequest = {
-				number: info.pull,
-				url: markdownLinkUrl(info.links.pull),
-				user: info.user,
-				userUrl:
-					info.links.user != null && info.links.user !== ''
-						? markdownLinkUrl(info.links.user)
-						: null,
+		})
+		.with({ sha: P.string, repo: P.string }, async ({ sha, repo: repository }) => {
+			const fallbackCommit: Commit = {
+				short: sha.slice(0, 7),
+				url: `https://github.com/${repository}/commit/${sha}`,
 			};
-		}
-	}
-
-	// The PR is always preferred: it carries the review and the discussion, where a
-	// SHA carries only the diff. The SHA is the fallback, never an addition.
-	const hasLink = pullRequest != null || commit != null;
+			return match(await getCommitInfo({ repo: repository, commit: sha }))
+				.returnType<{
+					commit: Commit | null;
+					pullRequest: (PullRequest & { externalAuthor: boolean }) | null;
+				}>()
+				.with(P.nullish, () => ({ commit: fallbackCommit, pullRequest: null }))
+				.otherwise((info) => ({
+					commit: fallbackCommit,
+					pullRequest: pullRequestFromCommitInfo(info, internalAuthors),
+				}));
+		})
+		.exhaustive();
 
 	return renderReleaseTemplate({
-		commit: pullRequest == null ? commit : null,
+		commit: match(linked.pullRequest)
+			.with(P.nullish, () => linked.commit)
+			.otherwise(() => null),
 		continuations: remaining.map((line) => (line === '' ? '' : line.trim())),
-		pullRequest: pullRequest && {
-			...pullRequest,
-			externalAuthor:
-				pullRequest.user != null &&
-				pullRequest.user !== '' &&
-				pullRequest.userUrl != null &&
-				pullRequest.userUrl !== '' &&
-				!internalAuthors.includes(pullRequest.user),
-		},
-		summary: hasLink ? firstLine.replace(/\.+$/, '') : firstLine,
-		// A colon or semicolon terminates the line too: a summary ending in ':'
-		// introduces the bullet list that follows, and appending '.' yields ':.'.
+		pullRequest: linked.pullRequest,
+		summary: match(linked)
+			.with({ pullRequest: P.nullish, commit: P.nullish }, () => firstLine)
+			.otherwise(() => firstLine.replace(/\.+$/, '')),
 		summaryHasTerminal: /[.!?:;]$/.test(firstLine),
 	});
-}
+};
 
-export async function getDependencyReleaseLine(
-	_changesets: NewChangesetWithCommit[],
-	dependenciesUpdated: ModCompWithPackage[],
-	_options: unknown,
-): Promise<string> {
-	if (dependenciesUpdated.length === 0) return '';
+export const getDependencyReleaseLine: GetDependencyReleaseLine = async (
+	_changesets,
+	dependenciesUpdated,
+	_changelogOpts,
+) => {
+	if (dependenciesUpdated.length === 0) {
+		return '';
+	}
 
-	return renderDependencyTemplate(dependenciesUpdated);
-}
+	return renderDependencyTemplate(
+		dependenciesUpdated.map((dependency) => ({
+			name: dependency.name,
+			newVersion: dependency.newVersion,
+		})),
+	);
+};
 
 const changelogFunctions: ChangelogFunctions = {
 	getReleaseLine,
 	getDependencyReleaseLine,
 };
 
-// Changesets resolves the adapter through its default export.
-// oxlint-disable-next-line import/no-default-export
 export default changelogFunctions;

@@ -1,26 +1,9 @@
 import type { ESTree } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
-import { match } from 'ts-pattern';
+import { isMatching, match } from 'ts-pattern';
 
-type RuntimeFunction = ESTree.ArrowFunctionExpression | ESTree.Function;
-
-function isRuntimeFunction(node: ESTree.Node): node is RuntimeFunction {
-	return (
-		node.type === 'ArrowFunctionExpression' ||
-		node.type === 'FunctionDeclaration' ||
-		node.type === 'FunctionExpression'
-	);
-}
-
-function isInsideTypeGuard(node: ESTree.Node): boolean {
-	let current: ESTree.Node | null = node.parent;
-	while (current !== null && current.type !== 'Program') {
-		if (isRuntimeFunction(current)) {
-			return current.returnType?.typeAnnotation.type === 'TSTypePredicate';
-		}
-		current = current.parent;
-	}
-	return false;
+function isTypePredicateFunction(node: ESTree.Node): boolean {
+	return isMatching({ returnType: { typeAnnotation: { type: 'TSTypePredicate' } } }, node);
 }
 
 /** Disallow runtime typeof checks that narrow unparsed values instead of decoding them. */
@@ -49,18 +32,19 @@ export const noRuntimeTypeofRule = defineRule({
 	createOnce(context) {
 		return {
 			UnaryExpression(node) {
-				const option: unknown = context.options[0];
-				const allowInTypeGuards = match(option)
-					.with({ allowInTypeGuards: true }, () => true)
-					.otherwise(() => false);
-
-				match({
-					isTypeof: node.operator === 'typeof',
-					skip: allowInTypeGuards && isInsideTypeGuard(node),
-				})
-					.with({ isTypeof: true, skip: false }, () => {
-						context.report({ node, messageId: 'runtimeTypeof' });
-					})
+				match(node)
+					.with({ operator: 'typeof' }, (typeofExpression) =>
+						match({
+							option: context.options[0],
+							inGuard: isTypePredicateFunction(
+								context.sourceCode.getScope(typeofExpression).variableScope.block,
+							),
+						})
+							.with({ option: { allowInTypeGuards: true }, inGuard: true }, () => undefined)
+							.otherwise(() => {
+								context.report({ node: typeofExpression, messageId: 'runtimeTypeof' });
+							}),
+					)
 					.otherwise(() => undefined);
 			},
 		};

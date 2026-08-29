@@ -1,56 +1,65 @@
-import type { ESTree, Scope, SourceCode, Variable } from '@oxlint/plugins';
-import { defineRule } from '@oxlint/plugins';
+import type { TypeEnvironment, WideningTarget } from '@anti-slop/shared/dictionary-types';
 import {
 	classifyWideningTarget,
 	createTypeEnvironment,
 	isKnownEvidenceExpression,
-	type TypeEnvironment,
-	type WideningTarget,
-} from '../shared/dictionary-types.ts';
+	unwrapEvidenceWrappers,
+} from '@anti-slop/shared/dictionary-types';
+import type { ESTree, SourceCode, Variable } from '@oxlint/plugins';
+import { defineRule } from '@oxlint/plugins';
+import { isMatching, match, P } from 'ts-pattern';
 
 type FunctionExpression = ESTree.ArrowFunctionExpression | ESTree.Function;
 
-function unwrapExpression(expression: ESTree.Expression): ESTree.Expression {
-	let current = expression;
-	while (
-		current.type === 'ParenthesizedExpression' ||
-		current.type === 'TSAsExpression' ||
-		current.type === 'TSSatisfiesExpression' ||
-		current.type === 'TSTypeAssertion' ||
-		current.type === 'TSNonNullExpression'
-	) {
-		current = current.expression;
-	}
-	return current;
+function isFunctionLike(node: ESTree.Node): node is FunctionExpression {
+	return isMatching(
+		{
+			type: P.union(
+				'ArrowFunctionExpression',
+				'FunctionDeclaration',
+				'FunctionExpression',
+				'TSDeclareFunction',
+				'TSEmptyBodyFunctionExpression',
+			),
+		},
+		node,
+	);
+}
+
+function isTypeAssertionExpression(
+	node: ESTree.Node,
+): node is ESTree.TSAsExpression | ESTree.TSTypeAssertion {
+	return isMatching({ type: P.union('TSAsExpression', 'TSTypeAssertion') }, node);
 }
 
 function resolveVariable(
 	sourceCode: SourceCode,
 	identifier: ESTree.IdentifierReference,
 ): Variable | null {
-	let scope: Scope | null = sourceCode.getScope(identifier);
-	while (scope !== null) {
-		const variable = scope.set.get(identifier.name);
-		if (variable !== undefined) return variable;
-		scope = scope.upper;
-	}
-	return null;
+	return match(
+		sourceCode
+			.getScope(identifier)
+			.references.find((reference) => reference.identifier.start === identifier.start),
+	)
+		.returnType<Variable | null>()
+		.with(P.nullish, () => null)
+		.otherwise((reference) => reference.resolved);
 }
 
 function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | null {
-	if (variable.defs.length !== 1) return null;
-	const [definition] = variable.defs;
-	return definition?.type === 'Variable' && definition.node.type === 'VariableDeclarator'
-		? definition.node
-		: null;
+	return match(variable.defs)
+		.with([{ type: 'Variable', node: { type: 'VariableDeclarator' } }], ([{ node }]) => node)
+		.otherwise(() => null);
 }
 
 function isStableConstVariable(variable: Variable, declarator: ESTree.VariableDeclarator): boolean {
-	return (
-		declarator.parent.type === 'VariableDeclaration' &&
-		declarator.parent.kind === 'const' &&
-		variable.references.every((reference) => reference.init || !reference.isWrite())
-	);
+	return match({
+		constDecl: isMatching({ type: 'VariableDeclaration', kind: 'const' }, declarator.parent),
+		stable: variable.references.every((reference) => reference.init || !reference.isWrite()),
+	})
+		.returnType<boolean>()
+		.with({ constDecl: true, stable: true }, () => true)
+		.otherwise(() => false);
 }
 
 function hasKnownEvidence(
@@ -58,74 +67,86 @@ function hasKnownEvidence(
 	expression: ESTree.Expression,
 	visitedVariables = new Set<Variable>(),
 ): boolean {
-	if (isKnownEvidenceExpression(expression)) return true;
-	const unwrapped = unwrapExpression(expression);
-	if (unwrapped.type !== 'Identifier') return false;
-	const variable = resolveVariable(sourceCode, unwrapped);
-	if (variable === null || visitedVariables.has(variable)) return false;
-	const declarator = variableDeclarator(variable);
-	if (
-		declarator === null ||
-		declarator.init === null ||
-		!isStableConstVariable(variable, declarator)
-	) {
-		return false;
-	}
-	visitedVariables.add(variable);
-	return hasKnownEvidence(sourceCode, declarator.init, visitedVariables);
+	return match(isKnownEvidenceExpression(expression))
+		.returnType<boolean>()
+		.with(true, () => true)
+		.otherwise(() =>
+			match(unwrapEvidenceWrappers(expression))
+				.returnType<boolean>()
+				.with({ type: 'Identifier' }, (identifier) =>
+					match(resolveVariable(sourceCode, identifier))
+						.returnType<boolean>()
+						.with(P.nullish, () => false)
+						.when(
+							(variable) => visitedVariables.has(variable),
+							() => false,
+						)
+						.otherwise((variable) =>
+							match(variableDeclarator(variable))
+								.returnType<boolean>()
+								.with({ init: P.nonNullable }, (declarator) =>
+									match(isStableConstVariable(variable, declarator))
+										.returnType<boolean>()
+										.with(true, () => {
+											visitedVariables.add(variable);
+											return hasKnownEvidence(sourceCode, declarator.init, visitedVariables);
+										})
+										.otherwise(() => false),
+								)
+								.otherwise(() => false),
+						),
+				)
+				.otherwise(() => false),
+		);
 }
 
 function annotationTarget(
 	annotation: ESTree.TSTypeAnnotation | null | undefined,
 	environment: TypeEnvironment,
 ): WideningTarget | null {
-	return annotation === null || annotation === undefined
-		? null
-		: classifyWideningTarget(annotation.typeAnnotation, environment);
+	return match(annotation)
+		.with(P.nullish, () => null)
+		.otherwise((value) => classifyWideningTarget(value.typeAnnotation, environment));
 }
 
-function enclosingFunction(node: ESTree.Node): FunctionExpression | null {
-	let current: ESTree.Node | null = node.parent;
-	while (current !== null && current.type !== 'Program') {
-		if (
-			current.type === 'ArrowFunctionExpression' ||
-			current.type === 'FunctionDeclaration' ||
-			current.type === 'FunctionExpression'
-		) {
-			return current;
-		}
-		current = current.parent;
+function functionName(
+	owner: FunctionExpression | undefined,
+	boundNames: WeakMap<FunctionExpression, string>,
+): string {
+	return match(owner)
+		.with(P.nullish, () => 'anonymous function')
+		.with({ id: { type: 'Identifier', name: P.select() } }, (name) => name)
+		.otherwise((fn) => boundNames.get(fn) ?? 'anonymous function');
+}
+
+function enclosingFunction(
+	sourceCode: SourceCode,
+	node: ESTree.Node,
+): FunctionExpression | undefined {
+	const block = sourceCode.getScope(node).variableScope.block;
+	if (!isFunctionLike(block)) {
+		return undefined;
 	}
-	return null;
+	return block;
 }
 
 function sourceKeyName(sourceCode: SourceCode, key: ESTree.PropertyKey): string {
-	if (key.type === 'Identifier' || key.type === 'PrivateIdentifier') return key.name;
-	if (key.type === 'Literal') return String(key.value);
-	return sourceCode.getText(key);
-}
-
-function functionName(sourceCode: SourceCode, owner: FunctionExpression | null): string {
-	if (owner === null) return 'anonymous function';
-	if (owner.id !== null) return owner.id.name;
-	const parent = owner.parent;
-	if (parent.type === 'VariableDeclarator' && parent.id.type === 'Identifier')
-		return parent.id.name;
-	if (parent.type === 'MethodDefinition') return sourceKeyName(sourceCode, parent.key);
-	return 'anonymous function';
+	return match(key)
+		.with({ type: P.union('Identifier', 'PrivateIdentifier'), name: P.select() }, (name) => name)
+		.with({ type: 'Literal' }, ({ value }) => String(value))
+		.otherwise((current) => sourceCode.getText(current));
 }
 
 function isEmptyObjectExpression(expression: ESTree.Expression): boolean {
-	const unwrapped = unwrapExpression(expression);
-	return unwrapped.type === 'ObjectExpression' && unwrapped.properties.length === 0;
+	return match(unwrapEvidenceWrappers(expression))
+		.with({ type: 'ObjectExpression', properties: [] }, () => true)
+		.otherwise(() => false);
 }
 
 function isDictionaryAccumulatorTarget(destination: WideningTarget): boolean {
-	return destination.kind === 'open dictionary' || destination.kind === 'generic container';
-}
-
-function hasParentAssertion(node: ESTree.Node): boolean {
-	return node.parent?.type === 'TSAsExpression' || node.parent?.type === 'TSTypeAssertion';
+	return match(destination.kind)
+		.with(P.union('open dictionary', 'generic container'), () => true)
+		.otherwise(() => false);
 }
 
 /** Detect sound syntactic cases where a known value is explicitly widened and loses evidence. */
@@ -143,100 +164,183 @@ export const noKnownValueWideningRule = defineRule({
 	},
 	createOnce(context) {
 		let environment: TypeEnvironment | null = null;
+		const boundNames = new WeakMap<FunctionExpression, string>();
 
 		const reportFlow = (
 			expression: ESTree.Expression,
 			destination: WideningTarget | null,
 			subject: string,
-		) => {
-			if (destination === null) return;
-			if (isDictionaryAccumulatorTarget(destination) && isEmptyObjectExpression(expression)) {
-				return;
-			}
-			if (!hasKnownEvidence(context.sourceCode, expression)) return;
-			context.report({
-				node: expression,
-				messageId: 'widening',
-				data: { subject, target: destination.kind },
-			});
-		};
+		) =>
+			match(destination)
+				.with(P.nullish, () => undefined)
+				.when(
+					(target) => isDictionaryAccumulatorTarget(target) && isEmptyObjectExpression(expression),
+					() => undefined,
+				)
+				.when(
+					(_target) => !hasKnownEvidence(context.sourceCode, expression),
+					() => undefined,
+				)
+				.otherwise((target) => {
+					context.report({
+						node: expression,
+						messageId: 'widening',
+						data: { subject, target: target.kind },
+					});
+				});
 
 		const targetFromAnnotation = (annotation: ESTree.TSTypeAnnotation | null | undefined) =>
-			environment === null ? null : annotationTarget(annotation, environment);
+			match(environment)
+				.with(P.nullish, () => null)
+				.otherwise((env) => annotationTarget(annotation, env));
+
+		const bindFunctionName = (expression: ESTree.Expression | null | undefined, name: string) => {
+			match(expression)
+				.with(
+					{ type: P.union('ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration') },
+					(fn) => {
+						boundNames.set(fn, name);
+					},
+				)
+				.otherwise(() => undefined);
+		};
+
+		const checkAssertion = (node: ESTree.Node) => {
+			if (!isTypeAssertionExpression(node)) {
+				return;
+			}
+			match(environment)
+				.with(P.nonNullable, (env) =>
+					reportFlow(
+						node.expression,
+						classifyWideningTarget(node.typeAnnotation, env),
+						'assertion',
+					),
+				)
+				.otherwise(() => undefined);
+		};
 
 		return {
 			Program(node) {
 				environment = createTypeEnvironment(node);
 			},
+			ArrowFunctionExpression(node) {
+				match(node.body)
+					.with({ type: 'BlockStatement' }, () => undefined)
+					.otherwise((body) => {
+						reportFlow(
+							body,
+							targetFromAnnotation(node.returnType),
+							`return value of \`${functionName(node, boundNames)}\``,
+						);
+					});
+			},
 			VariableDeclarator(node) {
-				if (node.init === null || node.id.type !== 'Identifier') return;
-				reportFlow(
-					node.init,
-					targetFromAnnotation(node.id.typeAnnotation),
-					`binding \`${node.id.name}\``,
-				);
+				match(node)
+					.with(
+						{
+							init: P.select('init', P.nonNullable),
+							id: {
+								type: 'Identifier',
+								name: P.select('name'),
+								typeAnnotation: P.select('annotation'),
+							},
+						},
+						({ init, name, annotation }) => {
+							bindFunctionName(init, name);
+							reportFlow(init, targetFromAnnotation(annotation), `binding \`${name}\``);
+						},
+					)
+					.otherwise(() => undefined);
 			},
 			PropertyDefinition(node) {
-				if (node.value === null) return;
-				reportFlow(
-					node.value,
-					targetFromAnnotation(node.typeAnnotation),
-					`property \`${sourceKeyName(context.sourceCode, node.key)}\``,
-				);
+				match(node)
+					.with(
+						{
+							value: P.select('value', P.nonNullable),
+							typeAnnotation: P.select('annotation'),
+							key: P.select('key'),
+						},
+						({ value, annotation, key }) =>
+							reportFlow(
+								value,
+								targetFromAnnotation(annotation),
+								`property \`${sourceKeyName(context.sourceCode, key)}\``,
+							),
+					)
+					.otherwise(() => undefined);
 			},
 			AccessorProperty(node) {
-				if (node.value === null) return;
-				reportFlow(
-					node.value,
-					targetFromAnnotation(node.typeAnnotation),
-					`property \`${sourceKeyName(context.sourceCode, node.key)}\``,
-				);
+				match(node)
+					.with(
+						{
+							value: P.select('value', P.nonNullable),
+							typeAnnotation: P.select('annotation'),
+							key: P.select('key'),
+						},
+						({ value, annotation, key }) =>
+							reportFlow(
+								value,
+								targetFromAnnotation(annotation),
+								`property \`${sourceKeyName(context.sourceCode, key)}\``,
+							),
+					)
+					.otherwise(() => undefined);
+			},
+			MethodDefinition(node) {
+				match(node)
+					.with({ key: P.select('key'), value: P.select('value') }, ({ key, value }) => {
+						bindFunctionName(value, sourceKeyName(context.sourceCode, key));
+					})
+					.otherwise(() => undefined);
 			},
 			AssignmentExpression(node) {
-				if (node.operator !== '=' || node.left.type !== 'Identifier') return;
-				const variable = resolveVariable(context.sourceCode, node.left);
-				if (variable === null) return;
-				const declarator = variableDeclarator(variable);
-				if (declarator === null || declarator.id.type !== 'Identifier') return;
-				reportFlow(
-					node.right,
-					targetFromAnnotation(declarator.id.typeAnnotation),
-					`binding \`${declarator.id.name}\``,
-				);
+				match(node)
+					.with(
+						{ operator: '=', left: { type: 'Identifier', name: P.select() } },
+						(name, { left, right }) => {
+							bindFunctionName(right, name);
+							return match(resolveVariable(context.sourceCode, left))
+								.with(P.nullish, () => undefined)
+								.otherwise((variable) =>
+									match(variableDeclarator(variable))
+										.with(
+											{
+												id: {
+													type: 'Identifier',
+													name: P.select('name'),
+													typeAnnotation: P.select('annotation'),
+												},
+											},
+											({ name: bindingName, annotation }) =>
+												reportFlow(
+													right,
+													targetFromAnnotation(annotation),
+													`binding \`${bindingName}\``,
+												),
+										)
+										.otherwise(() => undefined),
+								);
+						},
+					)
+					.otherwise(() => undefined);
 			},
 			ReturnStatement(node) {
-				if (node.argument === null) return;
-				const owner = enclosingFunction(node);
-				reportFlow(
-					node.argument,
-					targetFromAnnotation(owner?.returnType),
-					`return value of \`${functionName(context.sourceCode, owner)}\``,
-				);
+				match(node.argument)
+					.with(P.nullish, () => undefined)
+					.otherwise((argument) => {
+						const owner = enclosingFunction(context.sourceCode, node);
+						reportFlow(
+							argument,
+							targetFromAnnotation(owner?.returnType),
+							`return value of \`${functionName(owner, boundNames)}\``,
+						);
+					});
 			},
-			ArrowFunctionExpression(node) {
-				if (node.body.type === 'BlockStatement') return;
-				reportFlow(
-					node.body,
-					targetFromAnnotation(node.returnType),
-					`return value of \`${functionName(context.sourceCode, node)}\``,
-				);
-			},
-			TSAsExpression(node) {
-				if (environment === null || hasParentAssertion(node)) return;
-				reportFlow(
-					node.expression,
-					classifyWideningTarget(node.typeAnnotation, environment),
-					'assertion',
-				);
-			},
-			TSTypeAssertion(node) {
-				if (environment === null || hasParentAssertion(node)) return;
-				reportFlow(
-					node.expression,
-					classifyWideningTarget(node.typeAnnotation, environment),
-					'assertion',
-				);
-			},
+			'TSAsExpression:not(TSAsExpression TSAsExpression, TSTypeAssertion TSAsExpression)':
+				checkAssertion,
+			'TSTypeAssertion:not(TSAsExpression TSTypeAssertion, TSTypeAssertion TSTypeAssertion)':
+				checkAssertion,
 		};
 	},
 });

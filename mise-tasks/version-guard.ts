@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 //MISE description="Block local package.json version drift from origin/main"
 
-import { env, exit } from 'node:process';
+import { env, exit, stderr } from 'node:process';
 import { match, P } from 'ts-pattern';
 
 if (env['CI'] === 'true') {
@@ -44,8 +44,8 @@ for (const file of files) {
 	const remoteVersion = packageVersion(remote.stdout.toString());
 	const localVersion = packageVersion(await Bun.file(file).text());
 	if (remoteVersion !== undefined && remoteVersion !== localVersion) {
-		console.error(`BLOCKED: ${file} version changed locally (${remoteVersion} → ${localVersion})`);
-		console.error('  Versions are CI-managed via changesets.');
+		stderr.write(`BLOCKED: ${file} version changed locally (${remoteVersion} → ${localVersion})\n`);
+		stderr.write('  Versions are CI-managed via changesets.\n');
 		errors += 1;
 	}
 }
@@ -55,13 +55,11 @@ if (errors > 0) {
 }
 
 function packageVersion(text: string): string | undefined {
-	let value: unknown;
 	try {
-		value = JSON.parse(text);
+		return match(JSON.parse(text))
+			.with({ version: P.string }, ({ version }) => version)
+			.otherwise(() => undefined);
 	} catch {
 		return undefined;
 	}
-	return match(value)
-		.with({ version: P.string }, ({ version }) => version)
-		.otherwise(() => undefined);
 }

@@ -12,9 +12,9 @@ export default defineConfig({
 	clean: true,
 	hash: false,
 	unbundle: true,
-	dts: true,
+	dts: { tsconfig: 'tsconfig.build.json' },
 	deps: {
-		neverBundle: true,
+		onlyBundle: [],
 		onlyImport: ['@oxlint/plugins', 'ts-pattern'],
 	},
 });

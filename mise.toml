@@ -3,7 +3,7 @@ min_version = "2026.7.7"
 [tools]
 node = "26.8.1"
 bun = "1.4.0"
-lefthook = "latest"
+lefthook = "2.1.12"
 
 [settings]
 experimental = true
@@ -13,7 +13,7 @@ env_cache_ttl = "4h"
 fetch_remote_versions_cache = "12h"
 
 [env]
-_.path = ["{{config_root}}/node_modules/.bin"]
+_.path = { path = ["{{config_root}}/node_modules/.bin"], tools = true }
 
 [deps.bun]
 auto = true
@@ -23,9 +23,13 @@ run = "bun install --frozen-lockfile"
 postinstall = "lefthook install"
 
 [tasks.verify]
-description = "Full CI-safe verification gate: lint + typecheck + unit tests + build"
-depends = ["lint", "typecheck", "test", "build"]
+description = "Full CI-safe verification gate: lint + deps + typecheck + unit tests + build"
+depends = ["lint", "deps", "typecheck", "test", "build"]
 run = "echo 'verify passed'"
+
+[tasks.deps]
+description = "Dependency and dead-export analysis (knip)"
+run = "knip --no-progress"
 
 [tasks.lint]
 description = "Lint: biome + oxlint in parallel"
@@ -37,11 +41,11 @@ run = "biome check ."
 
 [tasks."lint:oxlint"]
 hide = true
-run = "oxlint"
+run = "bun --bun oxlint"
 
 [tasks."lint:fix"]
 description = "Autofix lint: biome --write then oxlint --fix"
-run = ["biome check --write .", "oxlint --fix"]
+run = ["biome check --write .", "bun --bun oxlint --fix"]
 
 [tasks.format]
 description = "Format with biome"
@@ -49,7 +53,13 @@ run = "biome format --write ."
 
 [tasks.typecheck]
 description = "TypeScript typecheck (no emit)"
+depends = ["build"]
 run = "tsc --noEmit -p tsconfig.json"
+
+[tasks.test]
+description = "Node RuleTester against published dist"
+depends = ["build"]
+run = "node --experimental-strip-types --test test/"
 
 [tasks.build]
 description = "Build plugin with tsdown"

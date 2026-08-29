@@ -1,7 +1,7 @@
+import { lexicalTypeParameterNames } from '@anti-slop/shared/lexical-type-parameters';
 import type { ESTree, SourceCode } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
-
-import { lexicalTypeParameterNames } from '../shared/lexical-type-parameters.ts';
+import { match, P } from 'ts-pattern';
 
 type Parameter = ESTree.ParamPattern;
 type ParameterOwner =
@@ -14,22 +14,31 @@ type ParameterOwner =
 	| ESTree.TSMethodSignature;
 
 function parameterAnnotation(parameter: Parameter): ESTree.TSTypeAnnotation | null | undefined {
-	if (parameter.type === 'TSParameterProperty') {
-		return parameterAnnotation(parameter.parameter);
-	}
-	if (parameter.type === 'RestElement') {
-		return parameter.typeAnnotation ?? parameterAnnotation(parameter.argument);
-	}
-	if (parameter.type === 'AssignmentPattern') {
-		return parameter.typeAnnotation ?? parameter.left.typeAnnotation;
-	}
-	return parameter.typeAnnotation;
+	return match(parameter)
+		.with({ type: 'TSParameterProperty' }, ({ parameter: inner }) => parameterAnnotation(inner))
+		.with(
+			{ type: 'RestElement' },
+			(rest) => rest.typeAnnotation ?? parameterAnnotation(rest.argument),
+		)
+		.with(
+			{ type: 'AssignmentPattern' },
+			(assignment) => assignment.typeAnnotation ?? assignment.left.typeAnnotation,
+		)
+		.otherwise((value) => value.typeAnnotation);
 }
 
 function parameterName(parameter: Parameter, sourceCode: SourceCode): string {
-	return parameter.type === 'Identifier'
-		? parameter.name
-		: sourceCode.getText(parameter).replace(/\s*:\s*object\s*$/u, '');
+	return match(parameter)
+		.with({ type: 'Identifier' }, ({ name }) => name)
+		.otherwise(() => sourceCode.getText(parameter).replace(/\s*:\s*object\s*$/u, ''));
+}
+
+function exportedDeclaration(
+	statement: ESTree.Program['body'][number],
+): ESTree.Node | null | undefined {
+	return match(statement)
+		.with({ type: 'ExportNamedDeclaration' }, ({ declaration }) => declaration)
+		.otherwise((value) => value);
 }
 
 /** Ban the broad object type on function inputs, including local aliases to object. */
@@ -52,42 +61,57 @@ export const noObjectParametersRule = defineRule({
 			type: ESTree.TSType,
 			shadowedAliases: ReadonlySet<string>,
 			visited = new Set<string>(),
-		): boolean => {
-			if (type.type === 'TSObjectKeyword') return true;
-			if (type.type === 'TSParenthesizedType')
-				return resolvesToObject(type.typeAnnotation, shadowedAliases, visited);
-			if (type.type === 'TSUnionType') {
-				return type.types.some((member) => resolvesToObject(member, shadowedAliases, visited));
-			}
-			if (
-				type.type !== 'TSTypeReference' ||
-				type.typeName.type !== 'Identifier' ||
-				(type.typeArguments !== null &&
-					type.typeArguments !== undefined &&
-					type.typeArguments.params.length > 0) ||
-				visited.has(type.typeName.name) ||
-				shadowedAliases.has(type.typeName.name)
-			) {
-				return false;
-			}
-			const alias = aliases.get(type.typeName.name);
-			if (alias === undefined) return false;
-			const nextVisited = new Set(visited);
-			nextVisited.add(type.typeName.name);
-			return resolvesToObject(alias, shadowedAliases, nextVisited);
-		};
+		): boolean =>
+			match(type)
+				.with({ type: 'TSObjectKeyword' }, () => true)
+				.with({ type: 'TSParenthesizedType' }, ({ typeAnnotation }) =>
+					resolvesToObject(typeAnnotation, shadowedAliases, visited),
+				)
+				.with({ type: 'TSUnionType' }, ({ types }) =>
+					types.some((member) => resolvesToObject(member, shadowedAliases, visited)),
+				)
+				.with(
+					{
+						type: 'TSTypeReference',
+						typeName: { type: 'Identifier', name: P.select() },
+						typeArguments: P.union(P.nullish, { params: [] }),
+					},
+					(name) =>
+						match({
+							shadowed: visited.has(name) || shadowedAliases.has(name),
+							alias: aliases.get(name),
+						})
+							.with({ shadowed: true }, () => false)
+							.with({ alias: P.nullish }, () => false)
+							.otherwise(({ alias }) =>
+								match(alias)
+									.with(P.nullish, () => false)
+									.otherwise((present) => {
+										const nextVisited = new Set(visited);
+										nextVisited.add(name);
+										return resolvesToObject(present, shadowedAliases, nextVisited);
+									}),
+							),
+				)
+				.otherwise(() => false);
 
 		const checkParameters = (node: ParameterOwner) => {
-			const shadowedAliases = lexicalTypeParameterNames(node, context.sourceCode.visitorKeys);
+			const shadowedAliases = lexicalTypeParameterNames(node);
 			for (const parameter of node.params) {
 				const annotation = parameterAnnotation(parameter);
-				if (annotation === null || annotation === undefined) continue;
-				if (!resolvesToObject(annotation.typeAnnotation, shadowedAliases)) continue;
-				context.report({
-					node: annotation.typeAnnotation,
-					messageId: 'objectParameter',
-					data: { parameter: parameterName(parameter, context.sourceCode) },
-				});
+				match(annotation)
+					.with(P.nullish, () => undefined)
+					.otherwise((present) =>
+						match(resolvesToObject(present.typeAnnotation, shadowedAliases))
+							.with(true, () => {
+								context.report({
+									node: present.typeAnnotation,
+									messageId: 'objectParameter',
+									data: { parameter: parameterName(parameter, context.sourceCode) },
+								});
+							})
+							.otherwise(() => undefined),
+					);
 			}
 		};
 
@@ -95,26 +119,15 @@ export const noObjectParametersRule = defineRule({
 			Program(node) {
 				aliases.clear();
 				for (const statement of node.body) {
-					const declaration =
-						statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement;
-					if (
-						declaration?.type === 'TSTypeAliasDeclaration' &&
-						(declaration.typeParameters === null || declaration.typeParameters === undefined)
-					) {
-						aliases.set(declaration.id.name, declaration.typeAnnotation);
-					}
+					match(exportedDeclaration(statement))
+						.with({ type: 'TSTypeAliasDeclaration', typeParameters: P.nullish }, (alias) => {
+							aliases.set(alias.id.name, alias.typeAnnotation);
+						})
+						.otherwise(() => undefined);
 				}
 			},
-			ArrowFunctionExpression: checkParameters,
-			FunctionDeclaration: checkParameters,
-			FunctionExpression: checkParameters,
-			TSCallSignatureDeclaration: checkParameters,
-			TSConstructSignatureDeclaration: checkParameters,
-			TSConstructorType: checkParameters,
-			TSDeclareFunction: checkParameters,
-			TSEmptyBodyFunctionExpression: checkParameters,
-			TSFunctionType: checkParameters,
-			TSMethodSignature: checkParameters,
+			'ArrowFunctionExpression, FunctionDeclaration, FunctionExpression, TSCallSignatureDeclaration, TSConstructSignatureDeclaration, TSConstructorType, TSDeclareFunction, TSEmptyBodyFunctionExpression, TSFunctionType, TSMethodSignature':
+				checkParameters,
 		};
 	},
 });

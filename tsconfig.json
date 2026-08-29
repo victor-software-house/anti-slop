@@ -2,7 +2,7 @@
 	"compilerOptions": {
 		"target": "ES2024",
 		"lib": ["ES2024"],
-		"types": ["@types/bun"],
+		"types": ["node", "@types/bun"],
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"strict": true,
@@ -12,7 +12,8 @@
 		"allowSyntheticDefaultImports": true,
 		"resolveJsonModule": true,
 		"isolatedModules": true,
-		"allowImportingTsExtensions": true,
+		"verbatimModuleSyntax": true,
+		"erasableSyntaxOnly": true,
 		"noUncheckedIndexedAccess": true,
 		"exactOptionalPropertyTypes": true,
 		"noPropertyAccessFromIndexSignature": true,
@@ -24,8 +25,12 @@
 		"allowUnreachableCode": false,
 		"allowUnusedLabels": false,
 		"noImplicitOverride": true,
-		"forceConsistentCasingInFileNames": true
+		"forceConsistentCasingInFileNames": true,
+		"paths": {
+			"@anti-slop": ["./src/index.ts"],
+			"@anti-slop/*": ["./src/*"]
+		}
 	},
-	"include": ["src/**/*.ts", "mise-tasks/**/*.ts", ".changeset/**/*.ts", "*.config.ts"],
+	"include": ["src", "test", "mise-tasks", ".changeset", "*.config.ts"],
 	"exclude": ["node_modules", "dist"]
 }

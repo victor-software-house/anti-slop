@@ -1,9 +1,12 @@
-# anti-slop
+# @victor-software-house/anti-slop
 
 Published fork of [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop).
 Generic rules in `src/index.ts`. Effect rules in `src/effect/`.
 
-npm name is unscoped **`anti-slop`**. GitHub is `victor-software-house/anti-slop`.
+npm name is **`@victor-software-house/anti-slop`**. Unscoped `anti-slop` is blocked
+by npm as too similar to existing `antislop`. GitHub is
+`victor-software-house/anti-slop`. Rule prefixes stay `anti-slop/` via the
+plugin `meta.name`.
 
 ## Invariants
 
@@ -14,8 +17,9 @@ npm name is unscoped **`anti-slop`**. GitHub is `victor-software-house/anti-slop
   `devDependencies` or bundle it.
 - JS plugins have no type-aware APIs. Do not add rules that need the type checker.
 - Tests use `RuleTester` from `oxlint/plugins-dev` and must run on Node.
-  Oxlint's RuleTester refuses Bun (`global.Bun`). `mise run test` is the
-  file task `mise-tasks/test.ts`, which spawns `node --experimental-strip-types`.
+  Oxlint's RuleTester refuses Bun (`global.Bun`). Tests live in `test/` and
+  import `@victor-software-house/anti-slop` against `dist`. `mise run test`
+  depends on `build` and runs `node --experimental-strip-types --test test/`.
 - Upstream SHA is `6d538555cb151d4121ed51a27db81890eacf8ae9`. Inspect the
   upstream diff before bumping.
 

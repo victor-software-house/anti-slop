@@ -1,6 +1,7 @@
+import { isGlobalReflectMethodCall } from '@anti-slop/shared/reflect-method';
+import type { ESTree } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
-
-import { isGlobalReflectMethodCall } from '../shared/reflect-method.ts';
+import { match } from 'ts-pattern';
 
 /** Ban Reflect.apply, which bypasses ordinary typed function calls. */
 export const noReflectApplyRule = defineRule({
@@ -17,11 +18,12 @@ export const noReflectApplyRule = defineRule({
 	},
 	createOnce(context) {
 		return {
-			CallExpression(node) {
-				if (node.callee.type === 'Super' || node.callee.type === 'V8IntrinsicExpression') return;
-				if (isGlobalReflectMethodCall(context.sourceCode, node.callee, 'apply')) {
-					context.report({ node, messageId: 'reflectApply' });
-				}
+			'CallExpression[callee.type="MemberExpression"]'(node: ESTree.CallExpression) {
+				match(isGlobalReflectMethodCall(context.sourceCode, node.callee, 'apply'))
+					.with(true, () => {
+						context.report({ node, messageId: 'reflectApply' });
+					})
+					.otherwise(() => undefined);
 			},
 		};
 	},

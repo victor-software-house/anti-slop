@@ -4,7 +4,7 @@ export default defineConfig({
 	options: {
 		typeAware: true,
 	},
-	ignorePatterns: ['dist/**', '.agents/**', '.claude/**', '.codex/**', '.cursor/**'],
+	ignorePatterns: ['dist/**', 'tmp/**', '.agents/**', '.claude/**', '.codex/**', '.cursor/**'],
 	categories: {
 		correctness: 'error',
 		suspicious: 'error',
@@ -15,12 +15,32 @@ export default defineConfig({
 		nursery: 'off',
 	},
 	plugins: ['typescript', 'unicorn', 'import', 'promise', 'oxc'],
-	jsPlugins: ['./src/index.ts'],
+	jsPlugins: [
+		'./src/index.ts',
+		{
+			name: '@limegrass/import-alias',
+			specifier: '@limegrass/eslint-plugin-import-alias',
+		},
+	],
 	rules: {
 		'no-console': 'error',
 		complexity: ['error', { max: 20, variant: 'modified' }],
 		'import/no-default-export': 'error',
 		'import/no-cycle': 'error',
+		'import/extensions': [
+			'error',
+			'never',
+			{
+				ignorePackages: true,
+				pattern: {
+					liquid: 'always',
+					md: 'always',
+					example: 'always',
+					json: 'always',
+					sh: 'always',
+				},
+			},
+		],
 		'typescript/no-explicit-any': 'error',
 		'typescript/no-non-null-assertion': 'error',
 		'typescript/consistent-type-imports': 'error',
@@ -58,50 +78,26 @@ export default defineConfig({
 		'anti-slop/no-unsafe-dictionary-type': 'error',
 		'anti-slop/no-widen-then-assert': 'error',
 		'anti-slop/require-safety-comment-for-type-assertion': 'error',
+		'@limegrass/import-alias/import-alias': 'error',
 	},
 	overrides: [
 		{
-			files: ['**/*.test.ts', '**/*.spec.ts'],
-			rules: {
-				'no-console': ['error', { allow: ['info', 'warn', 'error'] }],
-				'typescript/no-non-null-assertion': 'off',
-				'typescript/no-unsafe-assignment': 'off',
-				'typescript/no-unsafe-member-access': 'off',
-				'typescript/no-unsafe-argument': 'off',
-				'typescript/no-unsafe-return': 'off',
-				'typescript/no-unsafe-call': 'off',
-				'typescript/no-unsafe-type-assertion': 'off',
-				'typescript/strict-boolean-expressions': 'off',
-			},
-		},
-		{
-			files: ['src/index.ts', 'src/effect/index.ts'],
+			files: [
+				'oxlint.config.ts',
+				'tsdown.config.ts',
+				'commitlint.config.ts',
+				'src/index.ts',
+				'src/effect/index.ts',
+				'.changeset/changelog.ts',
+			],
 			rules: {
 				'import/no-default-export': 'off',
 			},
 		},
 		{
-			files: ['src/**/*.ts'],
+			files: ['test/**'],
 			rules: {
-				complexity: 'off',
-				'no-underscore-dangle': 'off',
-				'typescript/no-unnecessary-boolean-literal-compare': 'off',
-				'typescript/no-unsafe-type-assertion': 'off',
-				'anti-slop/no-unknown-parameters': 'off',
-				'anti-slop/no-unknown-returns': 'off',
-				'anti-slop/no-unsafe-dictionary-type': 'off',
-				'anti-slop/no-chained-type-assertions': 'off',
-				'anti-slop/require-safety-comment-for-type-assertion': 'off',
-			},
-		},
-		{
-			files: ['.changeset/**', '**/mise-tasks/**', '**/*.config.ts', '**/*.config.mjs'],
-			rules: {
-				'import/no-default-export': 'off',
-				'no-console': ['error', { allow: ['info', 'warn', 'error'] }],
-				'anti-slop/no-unknown-parameters': 'off',
-				'anti-slop/no-unsafe-dictionary-type': 'off',
-				'anti-slop/no-runtime-typeof': 'off',
+				'@limegrass/import-alias/import-alias': 'off',
 			},
 		},
 	],

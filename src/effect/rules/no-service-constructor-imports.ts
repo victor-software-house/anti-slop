@@ -1,17 +1,13 @@
 import type { Context, ESTree } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
-import { match } from 'ts-pattern';
+import { match, P } from 'ts-pattern';
 
 const SERVICE_CONSTRUCTOR_NAME = /^make[A-Z]/u;
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/u;
 
-function isProjectLocalImport(source: string): boolean {
-	return source.startsWith('./') || source.startsWith('../');
-}
-
 function getImportedName(specifier: ESTree.ImportSpecifier): string {
 	return match(specifier.imported)
-		.with({ type: 'Identifier' }, (imported) => imported.name)
+		.with({ type: 'Identifier', name: P.select() }, (name) => name)
 		.otherwise((imported) => imported.value);
 }
 
@@ -54,18 +50,14 @@ export const noServiceConstructorImportsRule = defineRule({
 					)
 					.otherwise(() => undefined);
 			},
-			ImportDeclaration(node) {
-				match(node.source.value)
-					.when(isProjectLocalImport, () => {
-						for (const specifier of node.specifiers) {
-							match(specifier)
-								.with({ type: 'ImportSpecifier' }, (spec) => {
-									reportLocalServiceConstructor(context, spec);
-								})
-								.otherwise(() => undefined);
-						}
-					})
-					.otherwise(() => undefined);
+			'ImportDeclaration[source.value=/^\\./]'(node: ESTree.ImportDeclaration) {
+				for (const specifier of node.specifiers) {
+					match(specifier)
+						.with({ type: 'ImportSpecifier' }, (spec) => {
+							reportLocalServiceConstructor(context, spec);
+						})
+						.otherwise(() => undefined);
+				}
 			},
 		};
 	},

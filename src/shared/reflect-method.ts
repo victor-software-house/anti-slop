@@ -1,23 +1,33 @@
-import type { ESTree, Scope, SourceCode, Variable } from '@oxlint/plugins';
+import type { ESTree, SourceCode, Variable } from '@oxlint/plugins';
+import { match, P } from 'ts-pattern';
 
 function resolveVariable(
 	sourceCode: SourceCode,
 	identifier: ESTree.IdentifierReference,
 ): Variable | null {
-	let scope: Scope | null = sourceCode.getScope(identifier);
-	while (scope !== null) {
-		const variable = scope.set.get(identifier.name);
-		if (variable !== undefined) return variable;
-		scope = scope.upper;
-	}
-	return null;
+	return match(
+		sourceCode
+			.getScope(identifier)
+			.references.find((reference) => reference.identifier.start === identifier.start),
+	)
+		.returnType<Variable | null>()
+		.with(P.nullish, () => null)
+		.otherwise((reference) => reference.resolved);
 }
 
 function isGlobalReflect(sourceCode: SourceCode, expression: ESTree.Expression): boolean {
-	if (expression.type !== 'Identifier' || expression.name !== 'Reflect') return false;
-	if (sourceCode.isGlobalReference(expression)) return true;
-	const variable = resolveVariable(sourceCode, expression);
-	return variable === null || variable.defs.length === 0;
+	return match(expression)
+		.with({ type: 'Identifier', name: 'Reflect' }, (identifier) =>
+			match({
+				global: sourceCode.isGlobalReference(identifier),
+				variable: resolveVariable(sourceCode, identifier),
+			})
+				.with({ global: true }, () => true)
+				.with({ variable: P.nullish }, () => true)
+				.with({ variable: { defs: [] } }, () => true)
+				.otherwise(() => false),
+		)
+		.otherwise(() => false);
 }
 
 /** Reports whether a call target names one method on the global Reflect object. */
@@ -26,10 +36,22 @@ export function isGlobalReflectMethodCall(
 	callee: ESTree.Expression,
 	methodName: string,
 ): boolean {
-	if (!('property' in callee) || !('object' in callee) || !('computed' in callee)) return false;
-	if (!isGlobalReflect(sourceCode, callee.object)) return false;
-	const property = callee.property;
-	return callee.computed
-		? property.type === 'Literal' && property.value === methodName
-		: property.type === 'Identifier' && property.name === methodName;
+	return match(callee)
+		.with(
+			{
+				type: 'MemberExpression',
+				computed: false,
+				property: { type: 'Identifier', name: P.select() },
+			},
+			(name, member) => isGlobalReflect(sourceCode, member.object) && name === methodName,
+		)
+		.with(
+			{
+				type: 'MemberExpression',
+				computed: true,
+				property: { type: 'Literal', value: P.select() },
+			},
+			(value, member) => isGlobalReflect(sourceCode, member.object) && value === methodName,
+		)
+		.otherwise(() => false);
 }

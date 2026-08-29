@@ -1,5 +1,6 @@
 import type { ESTree } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
+import { match } from 'ts-pattern';
 
 type Parameter = ESTree.ParamPattern;
 type ParameterOwner =
@@ -12,31 +13,28 @@ type ParameterOwner =
 	| ESTree.TSMethodSignature;
 
 function parameterAnnotation(parameter: Parameter): ESTree.TSTypeAnnotation | null | undefined {
-	if (parameter.type === 'TSParameterProperty') {
-		return parameterAnnotation(parameter.parameter);
-	}
-	if (parameter.type === 'RestElement') {
-		return parameter.typeAnnotation ?? parameterAnnotation(parameter.argument);
-	}
-	if (parameter.type === 'AssignmentPattern') {
-		return parameter.typeAnnotation ?? parameter.left.typeAnnotation;
-	}
-	return parameter.typeAnnotation;
+	return match(parameter)
+		.with({ type: 'TSParameterProperty' }, ({ parameter: inner }) => parameterAnnotation(inner))
+		.with(
+			{ type: 'RestElement' },
+			(rest) => rest.typeAnnotation ?? parameterAnnotation(rest.argument),
+		)
+		.with(
+			{ type: 'AssignmentPattern' },
+			(assignment) => assignment.typeAnnotation ?? assignment.left.typeAnnotation,
+		)
+		.otherwise((value) => value.typeAnnotation);
 }
 
 function parameterName(parameter: Parameter, sourceText: string): string {
-	if (parameter.type === 'TSParameterProperty') {
-		return parameterName(parameter.parameter, sourceText);
-	}
-	if (parameter.type === 'AssignmentPattern') {
-		return parameterName(parameter.left, sourceText);
-	}
-	if (parameter.type === 'RestElement') {
-		return parameterName(parameter.argument, sourceText);
-	}
-	return parameter.type === 'Identifier'
-		? parameter.name
-		: sourceText.replace(/\s*:\s*unknown\s*$/u, '');
+	return match(parameter)
+		.with({ type: 'TSParameterProperty' }, ({ parameter: inner }) =>
+			parameterName(inner, sourceText),
+		)
+		.with({ type: 'AssignmentPattern' }, ({ left }) => parameterName(left, sourceText))
+		.with({ type: 'RestElement' }, ({ argument }) => parameterName(argument, sourceText))
+		.with({ type: 'Identifier' }, ({ name }) => name)
+		.otherwise(() => sourceText.replace(/\s*:\s*unknown\s*$/u, ''));
 }
 
 /** Disallow unknown inputs except explicitly named error-cause enrichment. */
@@ -56,28 +54,26 @@ export const noUnknownParametersRule = defineRule({
 		const checkParameters = (node: ParameterOwner) => {
 			for (const parameter of node.params) {
 				const annotation = parameterAnnotation(parameter);
-				if (annotation?.typeAnnotation.type !== 'TSUnknownKeyword') continue;
-				const name = parameterName(parameter, context.sourceCode.getText(parameter));
-				if (name === 'cause') continue;
-				context.report({
-					node: annotation.typeAnnotation,
-					messageId: 'unknownParameter',
-					data: { parameter: name },
-				});
+				match(annotation?.typeAnnotation)
+					.with({ type: 'TSUnknownKeyword' }, (unknownType) => {
+						const name = parameterName(parameter, context.sourceCode.getText(parameter));
+						match(name)
+							.with('cause', () => undefined)
+							.otherwise((parameterNameText) => {
+								context.report({
+									node: unknownType,
+									messageId: 'unknownParameter',
+									data: { parameter: parameterNameText },
+								});
+							});
+					})
+					.otherwise(() => undefined);
 			}
 		};
 
 		return {
-			ArrowFunctionExpression: checkParameters,
-			FunctionDeclaration: checkParameters,
-			FunctionExpression: checkParameters,
-			TSCallSignatureDeclaration: checkParameters,
-			TSConstructSignatureDeclaration: checkParameters,
-			TSConstructorType: checkParameters,
-			TSDeclareFunction: checkParameters,
-			TSEmptyBodyFunctionExpression: checkParameters,
-			TSFunctionType: checkParameters,
-			TSMethodSignature: checkParameters,
+			'ArrowFunctionExpression, FunctionDeclaration, FunctionExpression, TSCallSignatureDeclaration, TSConstructSignatureDeclaration, TSConstructorType, TSDeclareFunction, TSEmptyBodyFunctionExpression, TSFunctionType, TSMethodSignature':
+				checkParameters,
 		};
 	},
 });

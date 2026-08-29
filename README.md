@@ -1,4 +1,4 @@
-# anti-slop
+# @victor-software-house/anti-slop
 
 Public npm fork of [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop) at
 `6d538555cb151d4121ed51a27db81890eacf8ae9`.
@@ -12,7 +12,7 @@ Do not vendor this into a consumer. Depend on the package.
 ## Install
 
 ```bash
-bun add -D anti-slop oxlint @oxlint/plugins
+bun add -D @victor-software-house/anti-slop oxlint @oxlint/plugins
 ```
 
 Pin `@oxlint/plugins` to the same oxlint major as the consumer.
@@ -25,7 +25,12 @@ JSON and TypeScript oxlint configs cannot coexist. Prefer `oxlint.config.ts`:
 import { defineConfig } from 'oxlint';
 
 export default defineConfig({
-	jsPlugins: ['anti-slop'],
+	jsPlugins: [
+		{
+			name: 'anti-slop',
+			specifier: '@victor-software-house/anti-slop',
+		},
+	],
 	rules: {
 		'anti-slop/no-chained-type-assertions': 'error',
 		'anti-slop/no-conditional-empty-object-spread': 'error',
@@ -49,7 +54,16 @@ export default defineConfig({
 Effect-specific rules are a separate entry. Register them only in Effect repos:
 
 ```ts
-jsPlugins: ['anti-slop', 'anti-slop/effect'],
+jsPlugins: [
+	{
+		name: 'anti-slop',
+		specifier: '@victor-software-house/anti-slop',
+	},
+	{
+		name: 'anti-slop-effect',
+		specifier: '@victor-software-house/anti-slop/effect',
+	},
+],
 ```
 
 The Effect plugin's `meta.name` is `anti-slop-effect`, so those rules are

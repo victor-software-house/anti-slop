@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.5.10/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.5.11/schema.json",
 	"assist": {
 		"actions": {
 			"source": {
@@ -18,7 +18,10 @@
 				"noUnnecessaryConditions": "error"
 			},
 			"style": {
-				"useImportType": "error",
+				"useImportType": {
+					"level": "error",
+					"options": { "style": "separatedType" }
+				},
 				"useNodejsImportProtocol": "error",
 				"noRestrictedImports": {
 					"level": "error",
@@ -27,6 +30,10 @@
 							{
 								"group": ["**/index"],
 								"message": "Remove /index suffix — Bun resolves it automatically."
+							},
+							{
+								"group": [".", "..", "./**", "../**"],
+								"message": "Relative imports are forbidden — use the package path alias."
 							}
 						]
 					}
@@ -94,34 +101,11 @@
 					}
 				}
 			}
-		},
-		{
-			"includes": ["src/**", "!src/**/*.test.ts"],
-			"linter": {
-				"rules": {
-					"correctness": {
-						"noUndeclaredDependencies": {
-							"level": "error",
-							"options": { "devDependencies": false }
-						}
-					}
-				}
-			}
-		},
-		{
-			"includes": ["mise-tasks/**", "tsdown.config.ts", "oxlint.config.ts", ".changeset/**"],
-			"linter": {
-				"rules": {
-					"style": {
-						"noRestrictedImports": "off"
-					}
-				}
-			}
 		}
 	],
 	"files": {
 		"ignoreUnknown": true,
-		"includes": ["**", "!dist", "!node_modules"]
+		"includes": ["**", "!dist", "!tmp", "!node_modules"]
 	},
 	"vcs": {
 		"enabled": true,

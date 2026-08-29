@@ -1,25 +1,28 @@
 import type { ESTree } from '@oxlint/plugins';
 import { defineRule } from '@oxlint/plugins';
+import { match } from 'ts-pattern';
 
 function unwrapParentheses(node: ESTree.Expression): ESTree.Expression {
-	let current = node;
-	while (current.type === 'ParenthesizedExpression') {
-		current = current.expression;
-	}
-	return current;
+	return match(node)
+		.with({ type: 'ParenthesizedExpression' }, ({ expression }) => unwrapParentheses(expression))
+		.otherwise((current) => current);
 }
 
 function isEmptyObjectExpression(node: ESTree.Expression): boolean {
-	return node.type === 'ObjectExpression' && node.properties.length === 0;
+	return match(node)
+		.with({ type: 'ObjectExpression', properties: [] }, () => true)
+		.otherwise(() => false);
 }
 
 function isConditionalEmptyObjectSpread(node: ESTree.Expression): boolean {
-	const conditional = unwrapParentheses(node);
-	return (
-		conditional.type === 'ConditionalExpression' &&
-		(isEmptyObjectExpression(conditional.consequent) ||
-			isEmptyObjectExpression(conditional.alternate))
-	);
+	return match(unwrapParentheses(node))
+		.with(
+			{ type: 'ConditionalExpression' },
+			(conditional) =>
+				isEmptyObjectExpression(conditional.consequent) ||
+				isEmptyObjectExpression(conditional.alternate),
+		)
+		.otherwise(() => false);
 }
 
 /** Ban conditional empty-object spreads without changing their omission semantics. */
@@ -37,12 +40,12 @@ export const noConditionalEmptyObjectSpreadRule = defineRule({
 	},
 	createOnce(context) {
 		return {
-			SpreadElement(node) {
-				if (node.parent.type !== 'ObjectExpression') return;
-
-				if (isConditionalEmptyObjectSpread(node.argument)) {
-					context.report({ node, messageId: 'avoid' });
-				}
+			'ObjectExpression > SpreadElement'(node: ESTree.SpreadElement) {
+				match(isConditionalEmptyObjectSpread(node.argument))
+					.with(true, () => {
+						context.report({ node, messageId: 'avoid' });
+					})
+					.otherwise(() => undefined);
 			},
 		};
 	},
