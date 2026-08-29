@@ -75,9 +75,19 @@ Release is changelog notes plus the `v*` tag.
 3. `changesets/action` opens a **"Version Packages" PR** (`mise run version` →
    `changeset version` + `bun update --lockfile-only`). The PR title is the
    commit title (`chore(release): version packages`).
-4. Operator **squash-merges** that PR (the only merge method on this repo;
-   GitHub uses the PR title as the squash commit subject) → CI runs
-   `mise run release`, then `mise run release:tags`.
+4. Operator squash-merges with an **explicit** subject and empty body:
+
+   ```bash
+   gh pr merge --squash --subject "$(gh pr view --json title --jq .title)" --body ""
+   ```
+
+   Do not use the GitHub merge box. GitHub generates the squash message whenever
+   you omit `--subject`/`--body`, and that generated message always gets a
+   `Co-authored-by:` trailer for `github-actions[bot]` (the Version Packages
+   commit author) even when the bot is already the commit author. Only a
+   caller-supplied message is used verbatim.
+
+   After merge, CI runs `mise run release`, then `mise run release:tags`.
 
 `0.0.0` was a one-time bootstrap: operator `bun publish --access public`, tag
 `v0.0.0`, then `npm trust` for
