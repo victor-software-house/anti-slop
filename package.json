@@ -61,6 +61,7 @@
 	],
 	"dependencies": {
 		"@oxlint/plugins": "1.80.0",
+		"bun-release": "^0.0.0",
 		"ts-pattern": "5.9.0"
 	},
 	"peerDependencies": {
