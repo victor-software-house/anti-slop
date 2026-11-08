@@ -8,9 +8,6 @@ blocked as too similar to existing `antislop`. GitHub is
 [`victor-software-house/anti-slop`][repo]. Rule prefixes stay `anti-slop/` and
 `anti-slop-effect/` via each plugin `meta.name`.
 
-[`CLAUDE.md`](./CLAUDE.md) is only `@AGENTS.md`. Do not give it a second copy of
-this file.
-
 ## Layout
 
 | Path | Role |
